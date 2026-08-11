@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#102b45">
+    <title>Бюджетирование</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#pipeline" aria-label="Бюджетирование">
+          <span class="brand-mark">Б</span>
+          <span>Бюджетирование<small>снимок модели</small></span>
+        </a>
+        <nav id="tab-nav" class="tab-nav" aria-label="Разделы бюджетирования"></nav>
+        <section class="sidebar-exchange" aria-label="Обмен данными Excel">
+          <a class="sidebar-exchange-download" href="/api/data-exchange/export/nsi" download>⇩ Выгрузить Excel</a>
+          <button id="import-excel-button" class="sidebar-exchange-import" type="button">⇧ Загрузить Excel</button>
+          <input id="import-excel-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          <p id="exchange-status" class="sidebar-exchange-status" role="status">Загрузка выполняется после полной проверки файла.</p>
+        </section>
+        <section id="desktop-sync-panel" class="sidebar-exchange desktop-sync-panel" aria-label="Синхронизация с GitHub" hidden>
+          <button id="desktop-sync-button" class="sidebar-exchange-import" type="button">↻ Синхронизировать GitHub</button>
+          <button id="desktop-configure-button" class="sidebar-exchange-download" type="button">⚙ Подключить GitHub</button>
+          <p id="desktop-sync-status" class="sidebar-exchange-status" role="status">Проверяем подключение GitHub…</p>
+        </section>
+        <div class="sidebar-note">
+          <strong>Источник данных</strong>
+          <span>Актуальная версия — моделирование 09.06.26</span>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="tab-kicker">Структура: Бюджетирование (новый)</p>
+            <h1 id="page-title">Загрузка…</h1>
+            <p class="subtitle" id="page-subtitle"></p>
+          </div>
+          <div class="source-badge"><i></i><span id="source-status">Проверка источника…</span></div>
+        </header>
+
+        <section class="filter-panel" aria-label="Фильтры">
+          <div class="filter-heading">
+            <strong>Контекст просмотра</strong>
+            <button id="reset-filters" class="text-button" type="button">Сбросить</button>
+          </div>
+          <div class="filters">
+            <label id="filter-project-label">Проект<select id="filter-project"></select></label>
+            <label id="filter-year-label">Год<select id="filter-year"></select></label>
+            <div id="context-tab-filters" class="context-tab-filters"></div>
+          </div>
+        </section>
+
+        <div id="app" aria-live="polite">
+          <section class="loading-card"><span class="loader"></span><p>Загружаем локальный снимок модели…</p></section>
+        </div>
+      </main>
+    </div>
+    <div id="desktop-sync-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="desktop-sync-modal-title" hidden>
+      <section class="modal">
+        <header class="modal-header"><div><h2 id="desktop-sync-modal-title">Подключение GitHub</h2><p>Токен сохраняется только в защищённом профиле Windows и не попадает в JSON или репозиторий.</p></div></header>
+        <form id="desktop-sync-form">
+          <div class="form-grid single-field">
+             <label>Адрес репозитория GitHub <b>*</b><input id="desktop-repository-url" name="repositoryUrl" type="url" placeholder="https://github.com/владелец/Budget.git" required></label>
+            <label>Персональный токен GitHub <b>*</b><input id="desktop-github-token" name="token" type="password" autocomplete="off" required></label>
+            <small id="desktop-sync-error"></small>
+          </div>
+          <footer class="modal-actions"><button id="desktop-sync-cancel" class="secondary-button" type="button">Закрыть</button><button class="primary-button" type="submit">Сохранить подключение</button></footer>
+        </form>
+      </section>
+    </div>
+    <div id="global-table-scroll" class="global-table-scroll" aria-label="Горизонтальная прокрутка таблицы" hidden><div id="global-table-scroll-track"></div></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

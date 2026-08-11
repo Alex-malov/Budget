@@ -1,0 +1,177 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
+const { buildOverview, createCashSeries, createServer, exchangeNsiExportRows, flattenSubcontracts, validateSubcontract } = require("../server.js");
+
+const snapshot = {
+  finance: {
+    years: [2024, 2025, 2026],
+    lines: [
+      { label: "Объем работ в т.ч. НДС", values: { 2026: 120 } },
+      { label: "НДС", values: { 2026: 20 } },
+      { label: "Себестоимость работ всего", values: { 2026: 70 } }
+    ],
+    operating: { 2026: 30 }
+  },
+  cashReceipts: [
+    { project: "A", monthly: [{ period: "2026-01", amount: 10 }, { period: "2026-02", amount: 5 }] },
+    { project: "B", monthly: [{ period: "2026-01", amount: 7 }, { period: "2025-12", amount: 99 }] }
+  ]
+};
+
+test("строит свод по последнему году исходной модели", function() {
+  const overview = buildOverview(snapshot);
+  assert.equal(overview.latestYear, 2026);
+  assert.equal(overview.revenueWithoutVat, 100);
+  assert.equal(overview.cost, 70);
+  assert.equal(overview.operating, 30);
+  assert.equal(overview.operatingRate, 0.3);
+});
+
+test("группирует поступления по периоду и проекту", function() {
+  assert.deepEqual(createCashSeries(snapshot.cashReceipts, 2026), [
+    { period: "2026-01", amount: 17 },
+    { period: "2026-02", amount: 5 }
+  ]);
+  assert.deepEqual(createCashSeries(snapshot.cashReceipts, 2026, "A"), [
+    { period: "2026-01", amount: 10 },
+    { period: "2026-02", amount: 5 }
+  ]);
+});
+
+test("преобразует подрядную строку в редактируемые месячные записи", function() {
+  assert.deepEqual(flattenSubcontracts([{
+    id: 7, project: "Проект", vendor: "Поставщик", subject: "Разработка", rate: 2000,
+    monthly: [{ period: "2026-01", amount: 40000 }, { period: "2026-02", amount: 10000 }]
+  }]), [
+    { id: "source-7-2026-01", source: "model", project: "Проект", vendor: "Поставщик", article: "Разработка", period: "2026-01", amount: 40000, rate: 2000, estimatedHours: 20, actualHours: 0, archived: false },
+    { id: "source-7-2026-02", source: "model", project: "Проект", vendor: "Поставщик", article: "Разработка", period: "2026-02", amount: 10000, rate: 2000, estimatedHours: 5, actualHours: 0, archived: false }
+  ]);
+  assert.ok(validateSubcontract({ project: "", vendor: "", article: "", period: "2026", amount: -1, rate: -1 }).project);
+});
+
+test("готовит выгрузку НСИ с активными связями и ненулевой стоимостью", function() {
+  const rows = exchangeNsiExportRows({
+    roles: [{ name: "Роль", archived: false, deleted: false }],
+    projects: [{ name: "Проект", archived: false, deleted: false }],
+    providers: [{ name: "Подряд", archived: false, deleted: false }],
+    vendors: [{ name: "Поставщик", providerType: "Подряд", archived: false, deleted: false }],
+    resources: [{ name: "Ресурс", vendor: "Поставщик", archived: false, deleted: false, costPlan: { 2026: { 1: { rate: 2000, attraction: 300 }, 2: { rate: 0, attraction: 0 } } } }]
+  });
+  assert.deepEqual(rows, [
+    ["Проектные роли", "Роль", "", "", "", "", "", ""],
+    ["Контракты / проекты", "Проект", "", "", "", "", "", ""],
+    ["Тип поставщика", "Подряд", "", "", "", "", "", ""],
+    ["Поставщики", "Поставщик", "", "Подряд", "", "", "", ""],
+    ["Сотрудник / ресурс", "Ресурс", "Поставщик", "", "", "", "", ""],
+    ["Сотрудник / ресурс", "Ресурс", "Поставщик", "", 2026, 1, 2000, 300]
+  ]);
+});
+
+test("справочники архивируют используемые записи и исключают их из выбора", async function() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "planning-reference-"));
+  const snapshotPath = path.join(directory, "snapshot.json");
+  const subcontractPath = path.join(directory, "subcontracts.json");
+  const referencePath = path.join(directory, "references.json");
+  const teamPath = path.join(directory, "team.json");
+  const staffPath = path.join(directory, "staff.json");
+  const changeLogPath = path.join(directory, "change-log.json");
+  const source = {
+    finance: { years: [2026], lines: [], operating: {} },
+    reference: { roles: ["Роль"], projects: ["Проект"] },
+    projects: ["Проект"], cashReceipts: [], staffResources: [{ employee: "Сотрудник", project: "Проект", role: "Роль", group: "Команда", cost: 1000, hoursPlan: { 2026: { 1: 160 } } }], team: { roles: [], roster: [], resourcePlan: [{ id: "model-1", employee: "Сотрудник", project: "Проект", role: "Роль", source: "Штат", origin: "model", hoursPlan: { 2026: { 1: 160 } } }] },
+    subcontracts: [{ id: 1, project: "Проект", vendor: "Поставщик", subject: "Работа", rate: 1000, monthly: [{ period: "2026-01", amount: 1000 }] }]
+  };
+  await fs.writeFile(snapshotPath, JSON.stringify(source), "utf8");
+  const server = createServer(snapshotPath, subcontractPath, referencePath, teamPath, staffPath, changeLogPath);
+  await new Promise(function(resolve) { server.listen(0, "127.0.0.1", resolve); });
+  const baseUrl = "http://127.0.0.1:" + server.address().port;
+  const request = async function(url, options) {
+    const response = await fetch(baseUrl + url, options);
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const references = await request("/api/references");
+    const supplier = references.body.directories.vendors.records.find(function(item) { return item.name === "Поставщик"; });
+    assert.ok(supplier);
+    assert.equal(supplier.providerType, "Подряд");
+
+    const created = await request("/api/references/vendors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд" }) });
+    assert.equal(created.status, 201);
+
+    const vatUpdated = await request("/api/references/vendors/" + encodeURIComponent(created.body.record.id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд", vatPlan: { 2027: { 1: 20, 2: 10 } } }) });
+    assert.equal(vatUpdated.status, 200);
+    assert.equal(vatUpdated.body.record.vatPlan["2027"]["1"], 20);
+    assert.equal(vatUpdated.body.record.vatPlan["2027"]["2"], 10);
+
+    const otherSubcontract = await request("/api/references/otherSubcontracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Серверы", category: "Прочие" }) });
+    assert.equal(otherSubcontract.status, 201);
+    assert.equal(otherSubcontract.body.record.providerType, "Подряд");
+    assert.equal(otherSubcontract.body.record.category, "Прочие");
+    const deletedOtherSubcontract = await request("/api/references/otherSubcontracts/" + encodeURIComponent(otherSubcontract.body.record.id), { method: "DELETE" });
+    assert.equal(deletedOtherSubcontract.status, 200);
+    assert.equal(deletedOtherSubcontract.body.action, "deleted");
+
+    const archived = await request("/api/references/vendors/" + encodeURIComponent(supplier.id), { method: "DELETE" });
+    assert.equal(archived.status, 200);
+    assert.equal(archived.body.action, "archived");
+
+    const blocked = await request("/api/subcontracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project: "Проект", vendor: "Поставщик", article: "Работа", period: "2026-02", amount: 1000, rate: 1000 }) });
+    assert.equal(blocked.status, 422);
+    assert.equal(blocked.body.fields.vendor, "Выберите активного поставщика из НСИ");
+
+    const deleted = await request("/api/references/vendors/" + encodeURIComponent(created.body.record.id), { method: "DELETE" });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.body.action, "deleted");
+
+    const team = await request("/api/team");
+    assert.equal(team.status, 200);
+    assert.equal(team.body.records[0].hoursPlan["2026"]["1"], 160);
+    assert.equal(team.body.records[0].cost, 0);
+
+    const staff = await request("/api/staff");
+    assert.equal(staff.status, 200);
+    assert.equal(staff.body.records[0].hoursActual["2026"]["1"], 0);
+    const changedStaff = await request("/api/staff/model-staff-1", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hoursActual: { 2026: { 1: 128 } } }) });
+    assert.equal(changedStaff.status, 200);
+    assert.equal(changedStaff.body.record.hoursActual["2026"]["1"], 128);
+
+    const staffHistory = await request("/api/change-log?entity=staff&recordId=model-staff-1");
+    assert.equal(staffHistory.status, 200);
+    assert.equal(staffHistory.body.entries[0].action, "updated");
+    assert.equal(staffHistory.body.entries[0].changes[0].field, "Часы (факт) · 2026 / 1");
+
+    const archivedStaff = await request("/api/staff/model-staff-1", { method: "DELETE" });
+    assert.equal(archivedStaff.status, 200);
+    assert.equal(archivedStaff.body.action, "archived");
+    const restoredStaff = await request("/api/staff/model-staff-1", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archived: false }) });
+    assert.equal(restoredStaff.status, 200);
+    assert.equal(restoredStaff.body.record.archived, false);
+
+    const teamVendor = await request("/api/references/vendors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Поставщик команды", providerType: "Подряд" }) });
+    assert.equal(teamVendor.status, 201);
+    const teamResource = await request("/api/references/resources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый сотрудник", vendor: "Поставщик команды", costPlan: { 2026: { 1: { rate: 150000, attraction: 30000 }, 2: { rate: 200000, attraction: 50000 } } } }) });
+    assert.equal(teamResource.status, 201);
+    const newTeamRecord = await request("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employee: "Новый сотрудник", vendor: "Поставщик команды", project: "Проект", role: "Роль", rate: 150000, attraction: 30000, costPlan: { 2026: { 1: { rate: 150000, attraction: 30000 }, 2: { rate: 200000, attraction: 50000 } } }, hoursPlan: { 2026: { 1: 80 } } }) });
+    assert.equal(newTeamRecord.status, 201);
+    assert.equal(newTeamRecord.body.record.cost, 180000);
+    assert.equal(newTeamRecord.body.record.costPlan["2026"]["1"].rate, 150000);
+    assert.equal(newTeamRecord.body.record.costPlan["2026"]["1"].attraction, 30000);
+    assert.equal(newTeamRecord.body.record.costPlan["2026"]["2"].rate, 200000);
+    assert.equal(newTeamRecord.body.record.costPlan["2026"]["2"].attraction, 50000);
+    assert.equal(newTeamRecord.body.record.source, "Подряд");
+
+    const archivedTeamRecord = await request("/api/team/model-1", { method: "DELETE" });
+    assert.equal(archivedTeamRecord.status, 200);
+    assert.equal(archivedTeamRecord.body.action, "archived");
+
+    const deletedTeamRecord = await request("/api/team/" + encodeURIComponent(newTeamRecord.body.record.id), { method: "DELETE" });
+    assert.equal(deletedTeamRecord.status, 200);
+    assert.equal(deletedTeamRecord.body.action, "deleted");
+  } finally {
+    await new Promise(function(resolve) { server.close(resolve); });
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

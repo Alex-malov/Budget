@@ -1,0 +1,11 @@
+data/planning.sqlite
+data/planning.sqlite-shm
+data/planning.sqlite-wal
+data/*.json
+data/backups/
+data/import-reports/
+node_modules/
+release/
+dist/
+*.log
+.env
