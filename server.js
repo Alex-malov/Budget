@@ -744,9 +744,18 @@ async function saveSubcontractRecords(records, overridesPath) {
 }
 
 async function readOtherSubcontractRecords(overridesPath) {
+  const target = overridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH;
   try {
-    const raw = await fs.readFile(overridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH, "utf8");
-    const saved = JSON.parse(raw);
+    const raw = await fs.readFile(target, "utf8");
+    const parsed = parseOtherSubcontractStorage(raw);
+    const saved = parsed.value;
+    if (parsed.recovered) {
+      const backupDirectory = path.join(path.dirname(target), "backups");
+      await fs.mkdir(backupDirectory, { recursive: true });
+      const backup = path.join(backupDirectory, path.basename(target) + ".corrupt-" + Date.now() + ".json");
+      await fs.writeFile(backup, raw, "utf8");
+      await saveOtherSubcontractRecords(saved.records || [], target);
+    }
     if (Array.isArray(saved.records)) return saved.records.map(function(record) {
       return normalizeOtherSubcontractRecord(record, record.id, record.source);
     });
@@ -756,9 +765,41 @@ async function readOtherSubcontractRecords(overridesPath) {
   return [];
 }
 
+function parseOtherSubcontractStorage(raw) {
+  try {
+    return { value: JSON.parse(raw), recovered: false };
+  } catch (error) {
+    const start = String(raw || "").search(/\S/);
+    if (start < 0 || raw[start] !== "{") throw error;
+    let depth = 0;
+    let quote = false;
+    let escaped = false;
+    for (let index = start; index < raw.length; index += 1) {
+      const character = raw[index];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quote = false;
+        continue;
+      }
+      if (character === '"') quote = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const value = JSON.parse(raw.slice(start, index + 1));
+          if (value && Array.isArray(value.records)) return { value: value, recovered: true };
+          break;
+        }
+      }
+    }
+    throw error;
+  }
+}
+
 async function saveOtherSubcontractRecords(records, overridesPath) {
   const target = overridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH;
-  const temporary = target + ".tmp";
+  const temporary = target + "." + process.pid + "." + Date.now() + ".tmp";
   await fs.writeFile(temporary, JSON.stringify({ records: records, updatedAt: new Date().toISOString() }, null, 2), "utf8");
   await fs.rename(temporary, target);
 }

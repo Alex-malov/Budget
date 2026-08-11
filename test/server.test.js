@@ -229,6 +229,15 @@ test("хранит план и факт прочего подряда по ме�
     assert.deepEqual(records.body.records[0].calculated.plan["2026"]["1"], { sum: 1500, vatRate: 22, vat: 330, cost: 1830 });
     assert.deepEqual(records.body.records[0].calculated.fact["2026"]["1"], { sum: 750, vatRate: 22, vat: 165, cost: 915 });
 
+    const validStorage = await fs.readFile(otherPath, "utf8");
+    await fs.writeFile(otherPath, validStorage + '\n{"unfinished":', "utf8");
+    const recovered = await request("/api/other-subcontracts");
+    assert.equal(recovered.status, 200);
+    assert.equal(recovered.body.records[0].plan["2026"]["1"], 1500);
+    const repairedStorage = JSON.parse(await fs.readFile(otherPath, "utf8"));
+    assert.equal(repairedStorage.records[0].fact["2026"]["1"], 750);
+    assert.ok((await fs.readdir(path.join(directory, "backups"))).some(function(file) { return file.startsWith("other-subcontracts.json.corrupt-"); }));
+
     const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });
     assert.equal(archivedReference.status, 200);
     assert.equal(archivedReference.body.action, "archived");
