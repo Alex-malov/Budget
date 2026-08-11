@@ -3,7 +3,7 @@
 
   const state = {
     snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
-    year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false,
+    year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false, otherSubcontractContextInitialized: false,
     expandedSubcontractYears: {}, expandedOtherSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
     subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null)
   };
@@ -112,6 +112,10 @@
       state.year = currentHoursYear();
       state.staffMonth = currentHoursMonth();
       state.staffContextInitialized = true;
+    }
+    if (state.activeTab === 7 && !state.otherSubcontractContextInitialized) {
+      state.year = currentHoursYear();
+      state.otherSubcontractContextInitialized = true;
     }
   }
 
@@ -900,11 +904,13 @@
 
   function otherSubcontractAmounts(record, kind, year, months) {
     return (months || Array.from({ length: 12 }, function(_, index) { return index + 1; })).reduce(function(total, month) {
-      const amount = num(record[kind] && record[kind][String(year)] && record[kind][String(month)]);
-      const vat = amount * otherSubcontractVatRate(record, year, month);
+      const calculated = record.calculated && record.calculated[kind] && record.calculated[kind][String(year)] && record.calculated[kind][String(year)][String(month)];
+      const amount = calculated ? num(calculated.sum) : num(record[kind] && record[kind][String(year)] && record[kind][String(month)]);
+      const vat = calculated ? num(calculated.vat) : amount * otherSubcontractVatRate(record, year, month);
+      const cost = calculated ? num(calculated.cost) : amount + vat;
       total.sum += amount;
       total.vat += vat;
-      total.cost += amount + vat;
+      total.cost += cost;
       return total;
     }, { sum: 0, vat: 0, cost: 0 });
   }
@@ -2894,8 +2900,9 @@
         state.year = currentHoursYear();
         state.staffMonth = currentHoursMonth();
       }
-      yearFilter.value = "all";
-      projectFilter.value = "all";
+      if (state.activeTab === 7) state.year = currentHoursYear();
+      yearFilter.value = state.year;
+      projectFilter.value = state.project;
       render();
     });
   }

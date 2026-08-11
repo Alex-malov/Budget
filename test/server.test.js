@@ -219,6 +219,8 @@ test("хранит план и факт прочего подряда по ме�
     assert.equal(records.body.records[0].plan["2026"]["1"], 1000);
     assert.equal(records.body.records[0].fact["2026"]["1"], 750);
     assert.equal(records.body.records[0].otherSubcontract, "Лицензии");
+    assert.deepEqual(records.body.records[0].calculated.plan["2026"]["1"], { sum: 1000, vatRate: 22, vat: 220, cost: 1220 });
+    assert.deepEqual(records.body.records[0].calculated.fact["2026"]["1"], { sum: 750, vatRate: 22, vat: 165, cost: 915 });
 
     const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });
     assert.equal(archivedReference.status, 200);

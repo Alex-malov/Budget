@@ -784,11 +784,36 @@ function validateOtherSubcontractRecord(body, directories) {
   return errors;
 }
 
+function otherSubcontractVatRate(directories, otherSubcontract, year, month) {
+  const reference = findReferenceRecord(directories, "otherSubcontracts", otherSubcontract);
+  const value = Number(reference && reference.vatPlan && reference.vatPlan[String(year)] && reference.vatPlan[String(year)][String(month)]);
+  return VAT_RATES.includes(value) ? value : 0;
+}
+
+function calculateOtherSubcontractRecord(record, directories) {
+  return ["plan", "fact"].reduce(function(result, kind) {
+    const plan = record[kind] && typeof record[kind] === "object" ? record[kind] : {};
+    result[kind] = Object.keys(plan).reduce(function(years, year) {
+      const months = plan[year] && typeof plan[year] === "object" ? plan[year] : {};
+      years[String(year)] = Array.from({ length: 12 }, function(_, index) {
+        const month = String(index + 1);
+        const sum = Number(months[month]) || 0;
+        const vatRate = otherSubcontractVatRate(directories, record.otherSubcontract, year, month);
+        const vat = sum * vatRate / 100;
+        return [month, { sum: sum, vatRate: vatRate, vat: vat, cost: sum + vat }];
+      }).reduce(function(values, entry) { values[entry[0]] = entry[1]; return values; }, {});
+      return years;
+    }, {});
+    return result;
+  }, {});
+}
+
 function applyReferencesToOtherSubcontractRecords(records, directories) {
   return (records || []).map(function(record) {
     return Object.assign({}, record, {
       otherSubcontract: resolvedReferenceName(directories, "otherSubcontracts", record.otherSubcontract),
-      project: resolvedReferenceName(directories, "projects", record.project)
+      project: resolvedReferenceName(directories, "projects", record.project),
+      calculated: calculateOtherSubcontractRecord(record, directories)
     });
   });
 }
