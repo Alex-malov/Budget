@@ -213,13 +213,20 @@ test("хранит план и факт прочего подряда по ме�
     assert.equal(created.body.record.plan["2026"]["1"], 1000);
     assert.equal(created.body.record.fact["2026"]["1"], 750);
 
+    const inlineUpdated = await request("/api/other-subcontracts/" + encodeURIComponent(created.body.record.id), {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: { 2026: { 1: 1500 } } })
+    });
+    assert.equal(inlineUpdated.status, 200);
+    assert.deepEqual(inlineUpdated.body.record.calculated.plan["2026"]["1"], { sum: 1500, vatRate: 22, vat: 330, cost: 1830 });
+    assert.deepEqual(inlineUpdated.body.record.calculated.fact["2026"]["1"], { sum: 750, vatRate: 22, vat: 165, cost: 915 });
+
     const records = await request("/api/other-subcontracts");
     assert.equal(records.status, 200);
     assert.equal(records.body.records.length, 1);
-    assert.equal(records.body.records[0].plan["2026"]["1"], 1000);
+    assert.equal(records.body.records[0].plan["2026"]["1"], 1500);
     assert.equal(records.body.records[0].fact["2026"]["1"], 750);
     assert.equal(records.body.records[0].otherSubcontract, "Лицензии");
-    assert.deepEqual(records.body.records[0].calculated.plan["2026"]["1"], { sum: 1000, vatRate: 22, vat: 220, cost: 1220 });
+    assert.deepEqual(records.body.records[0].calculated.plan["2026"]["1"], { sum: 1500, vatRate: 22, vat: 330, cost: 1830 });
     assert.deepEqual(records.body.records[0].calculated.fact["2026"]["1"], { sum: 750, vatRate: 22, vat: 165, cost: 915 });
 
     const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });

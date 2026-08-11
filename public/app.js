@@ -915,19 +915,19 @@
     }, { sum: 0, vat: 0, cost: 0 });
   }
 
-  function otherSubcontractMetricCells(values) {
-    return '<td class="money-cell">' + money(values.cost) + '</td><td class="money-cell">' + money(values.sum) + '</td><td class="money-cell">' + money(values.vat) + '</td>';
+  function otherSubcontractMetricCells(values, inlineConfig) {
+    return '<td class="money-cell">' + money(values.cost) + '</td>' + inlineCell(money(values.sum), inlineConfig, "money-cell other-subcontract-sum") + '<td class="money-cell">' + money(values.vat) + '</td>';
   }
 
   function otherSubcontractYearCells(record, year) {
     if (!state.expandedOtherSubcontractYears[year]) return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year)) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year));
     const months = Array.from({ length: 12 }, function(_, index) {
       const month = index + 1;
-      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month]));
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month]), { scope: "otherSubcontract", id: record.id, field: "plan", year: year, month: month });
     }).join("");
     return months + Array.from({ length: 12 }, function(_, index) {
       const month = index + 1;
-      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]));
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]), { scope: "otherSubcontract", id: record.id, field: "fact", year: year, month: month });
     }).join("");
   }
 
@@ -950,9 +950,9 @@
     }).join("");
     const body = records.length ? records.map(function(record) {
       const reference = otherSubcontractReference(record);
-      return '<tr class="' + (reference && reference.archived ? "inactive-resource-row" : "") + '"><td><strong>' + escapeHtml(record.otherSubcontract) + '</strong></td>' + years.map(function(year) { return otherSubcontractYearCells(record, year); }).join("") + '<td class="subcontract-actions"><button class="edit-button" data-other-subcontract-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-other-subcontract-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("other-subcontract", record.id) + '</td></tr>';
-    }).join("") : '<tr><td colspan="' + (2 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 72 : 6); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
-    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="3">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="3"></th></tr><tr>' + kindHeaders + '</tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      return '<tr class="' + (reference && reference.archived ? "inactive-resource-row" : "") + '"><td>' + escapeHtml(record.project) + '</td><td><strong>' + escapeHtml(record.otherSubcontract) + '</strong></td>' + years.map(function(year) { return otherSubcontractYearCells(record, year); }).join("") + '<td class="subcontract-actions"><button class="edit-button" data-other-subcontract-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-other-subcontract-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("other-subcontract", record.id) + '</td></tr>';
+    }).join("") : '<tr><td colspan="' + (3 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 72 : 6); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
+    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="3">Проект</th><th rowspan="3">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="3"></th></tr><tr>' + kindHeaders + '</tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   function renderOtherSubcontracts() {
@@ -968,7 +968,8 @@
       });
       return result;
     }, { plan: 0, fact: 0, vat: 0 });
-    return '<section class="metric-grid compact">' + card("План · стоимость", money(totals.plan, true), "сумма + НДС", "violet") + card("Факт · стоимость", money(totals.fact, true), "сумма + НДС", "amber") + card("НДС", money(totals.vat, true), "план и факт выбранного среза", "cyan") + '</section><section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показываются годовые итоги; нажмите на год, чтобы раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><span class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд».</span><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
+    const context = (state.project === "all" ? "все проекты" : state.project) + " · " + (state.year === "all" ? "все годы" : state.year + " год");
+    return '<section class="metric-grid compact">' + card("План · стоимость", money(totals.plan, true), "сумма + НДС · " + context, "violet") + card("Факт · стоимость", money(totals.fact, true), "сумма + НДС · " + context, "amber") + card("НДС", money(totals.vat, true), "план и факт · " + context, "cyan") + '</section><section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показываются годовые итоги; нажмите на год, чтобы раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><span class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд». Двойной щелчок по помесячной «Сумме» — изменение.</span><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
   }
 
   function otherSubcontractOptions(selected) {
@@ -1389,6 +1390,7 @@
     if (scope === "team") return findTeamRecord(cell.dataset.inlineId);
     if (scope === "staff") return state.staffRecords.find(function(record) { return record.id === cell.dataset.inlineId; });
     if (scope === "subcontract") return state.subcontracts.find(function(record) { return record.id === cell.dataset.inlineId; });
+    if (scope === "otherSubcontract") return state.otherSubcontractRecords.find(function(record) { return record.id === cell.dataset.inlineId; });
     return null;
   }
 
@@ -1432,6 +1434,9 @@
       return field === "actualHours"
         ? { type: "number", value: record.actualHours, min: "0", step: "0.5" }
         : { type: "text", value: record.article };
+    }
+    if (scope === "otherSubcontract") {
+      return { type: "number", value: num(record[field] && record[field][String(cell.dataset.inlineYear)] && record[field][String(cell.dataset.inlineYear)][String(cell.dataset.inlineMonth)]), min: "0", step: "0.01" };
     }
     return null;
   }
@@ -1483,6 +1488,14 @@
         }
         body = { resource: assignment.assignment.employee, project: assignment.assignment.project, vendor: subcontractResourceSupplier(assignment.assignment) };
       } else body[field] = field === "actualHours" ? Number(value) : value;
+    } else if (scope === "otherSubcontract") {
+      endpoint = "/api/other-subcontracts/" + encodeURIComponent(record.id);
+      const values = JSON.parse(JSON.stringify(record[field] || {}));
+      const year = String(cell.dataset.inlineYear);
+      const month = String(cell.dataset.inlineMonth);
+      values[year] = values[year] || {};
+      values[year][month] = Number(value);
+      body[field] = values;
     }
     try {
       cell.classList.add("inline-saving");
