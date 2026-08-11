@@ -175,3 +175,49 @@ test("справочники архивируют используемые за�
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test("хранит план и факт прочего подряда по месяцам и архивирует используемую статью", async function() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "planning-other-subcontract-"));
+  const snapshotPath = path.join(directory, "snapshot.json");
+  const subcontractPath = path.join(directory, "subcontracts.json");
+  const referencePath = path.join(directory, "references.json");
+  const teamPath = path.join(directory, "team.json");
+  const staffPath = path.join(directory, "staff.json");
+  const changeLogPath = path.join(directory, "change-log.json");
+  const otherPath = path.join(directory, "other-subcontracts.json");
+  await fs.writeFile(snapshotPath, JSON.stringify({
+    finance: { years: [2026], lines: [], operating: {} }, reference: { projects: ["Проект"] }, projects: ["Проект"], cashReceipts: [], staffResources: [], team: { roles: [], roster: [], resourcePlan: [] }, subcontracts: []
+  }), "utf8");
+  const server = createServer(snapshotPath, subcontractPath, referencePath, teamPath, staffPath, changeLogPath, otherPath);
+  await new Promise(function(resolve) { server.listen(0, "127.0.0.1", resolve); });
+  const baseUrl = "http://127.0.0.1:" + server.address().port;
+  const request = async function(url, options) {
+    const response = await fetch(baseUrl + url, options);
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const reference = await request("/api/references/otherSubcontracts", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Лицензии", category: "Основные", vatPlan: { 2026: { 1: 20, 2: 10 } } })
+    });
+    assert.equal(reference.status, 201);
+    assert.equal(reference.body.record.vatPlan["2026"]["1"], 20);
+
+    const created = await request("/api/other-subcontracts", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ otherSubcontract: "Лицензии", project: "Проект", plan: { 2026: { 1: 1000 } }, fact: { 2026: { 1: 750 } } })
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.record.plan["2026"]["1"], 1000);
+    assert.equal(created.body.record.fact["2026"]["1"], 750);
+
+    const records = await request("/api/other-subcontracts");
+    assert.equal(records.status, 200);
+    assert.equal(records.body.records.length, 1);
+
+    const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });
+    assert.equal(archivedReference.status, 200);
+    assert.equal(archivedReference.body.action, "archived");
+  } finally {
+    await new Promise(function(resolve) { server.close(resolve); });
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

@@ -2,9 +2,9 @@
   "use strict";
 
   const state = {
-    snapshot: null, overview: null, subcontracts: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
+    snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
     year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false,
-    expandedSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
+    expandedSubcontractYears: {}, expandedOtherSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
     subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null)
   };
   const app = document.getElementById("app");
@@ -17,7 +17,6 @@
   const filterPanel = contextTabFilters.closest(".filter-panel");
   const pageTitle = document.getElementById("page-title");
   const pageSubtitle = document.getElementById("page-subtitle");
-  const status = document.getElementById("source-status");
   const exchangeButton = document.getElementById("import-excel-button");
   const exchangeFileInput = document.getElementById("import-excel-file");
   const exchangeStatus = document.getElementById("exchange-status");
@@ -49,7 +48,8 @@
     "Детализация затрат подрядчиков: план из ресурсного плана и введённый факт.",
     "Учёт плановых и фактических часов штатных ресурсов.",
     "Состав команды, роли и распределение по проектам.",
-    "Роли, контракты, поставщики, ресурсы и прочий подряд бюджетирования."
+    "Роли, контракты, поставщики, ресурсы и прочий подряд бюджетирования.",
+    "Расходы на субподрядные задачи без привлечения специалистов и ресурсов."
   ];
   const referenceDirectoryKeys = ["roles", "projects", "providers", "vendors", "resources", "otherSubcontracts"];
 
@@ -83,6 +83,8 @@
     return formatters.month
       .format(new Date(Number(parts[0]), Number(parts[1]) - 1, 1)).replace(".", "");
   }
+
+  const fullMonthLabels = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
   function sum(rows, field) { return rows.reduce(function(total, row) { return total + num(row[field]); }, 0); }
 
@@ -266,7 +268,7 @@
         '</select></label><label class="subcontract-context-resource">Сотрудник<select id="subcontract-resource"><option value="all">Все сотрудники</option>' +
         context.resources.map(function(record) { return '<option value="' + escapeHtml(record.id) + '"' + (record.id === state.subcontractResource ? ' selected' : '') + '>' + escapeHtml(record.employee + " · " + record.project + " · " + record.role) + '</option>'; }).join("") +
         '</select></label><label class="subcontract-context-month">Месяц<select id="subcontract-month"><option value="all">Все месяцы</option>' +
-        teamMonthLabels.map(function(label, index) { const value = String(index + 1); return '<option value="' + value + '"' + (value === state.subcontractViewMonth ? ' selected' : '') + '>' + label + '</option>'; }).join("") +
+        fullMonthLabels.map(function(label, index) { const value = String(index + 1); return '<option value="' + value + '"' + (value === state.subcontractViewMonth ? ' selected' : '') + '>' + label + '</option>'; }).join("") +
         '</select></label>';
       document.getElementById("subcontract-vendor").addEventListener("change", function(event) { state.subcontractVendor = event.target.value; state.subcontractResource = "all"; state.subcontractPage = 1; render(); });
       document.getElementById("subcontract-resource").addEventListener("change", function(event) { state.subcontractResource = event.target.value; state.subcontractPage = 1; render(); });
@@ -280,7 +282,7 @@
         '</select></label><label class="staff-context-employee">Сотрудник<select id="staff-employee"><option value="all">Все сотрудники</option>' +
         context.availableEmployees.map(function(item) { return '<option value="' + escapeHtml(item) + '"' + (item === state.staffEmployee ? ' selected' : '') + '>' + escapeHtml(item) + '</option>'; }).join("") +
         '</select></label><label class="staff-context-month">Месяц<select id="staff-month"><option value="all">Все месяцы</option>' +
-        teamMonthLabels.map(function(label, index) { const value = String(index + 1); return '<option value="' + value + '"' + (value === state.staffMonth ? ' selected' : '') + '>' + label + '</option>'; }).join("") +
+        fullMonthLabels.map(function(label, index) { const value = String(index + 1); return '<option value="' + value + '"' + (value === state.staffMonth ? ' selected' : '') + '>' + label + '</option>'; }).join("") +
         '</select></label>';
       document.getElementById("staff-vendor").addEventListener("change", function(event) { state.staffVendor = event.target.value; state.staffEmployee = "all"; render(); });
       document.getElementById("staff-employee").addEventListener("change", function(event) { state.staffEmployee = event.target.value; render(); });
@@ -358,8 +360,15 @@
     if (lower === "ресурс подрядчика") return { title: title, meaning: "Ресурс с типом поставщика «Подряд», для которого отражаются часы и затраты.", formula: "Значение выбирается из активных записей НСИ.", source: "Источник: НСИ «Сотрудник / ресурс» и страница 06 «Команда»." };
     if (lower === "сотрудник" || lower === "сотрудник / ресурс") return { title: title, meaning: "Штатный сотрудник или ресурс, участвующий в проекте.", formula: "Значение является атрибутом ресурсной записи.", source: "Источник: НСИ «Сотрудник / ресурс» и страница 06 «Команда»." };
     if (lower === "поставщик") return { title: title, meaning: "Организация или источник, с которым связан ресурс.", formula: "Подставляется по связи ресурса с поставщиком.", source: "Источник: НСИ «Поставщики»." };
-    if (lower === "ндс") return { title: title, meaning: "Ставка налога на добавленную стоимость поставщика типа «Подряд».", formula: "Среднее за год = Σ месячных ставок НДС / 12.", source: "Источник: помесячные значения НДС в НСИ «Поставщики»." };
-    if (lower === "категория") return { title: title, meaning: "Классификация прочего подряда по характеру затрат.", formula: "«Основные» — непосредственно создают результат; «Прочие» — вынужденные сопутствующие затраты.", source: "Источник: НСИ «Прочий подряд»." };
+    if (lower === "ндс") return { title: title, meaning: "Признак наличия или ставка налога на добавленную стоимость для подрядной организации или статьи.", formula: "В расходах: НДС = Сумма × ставка НДС за соответствующий месяц. В НСИ «Да» означает, что заполнено хотя бы одно месячное значение.", source: "Источник: помесячные значения НДС в НСИ «Поставщики» или «Прочий подряд»." };
+    if (lower.includes("план") && lower.includes("стоимость")) return { title: title, meaning: "Полная плановая стоимость прочего подряда за отображаемый период.", formula: "Стоимость = Сумма + НДС.", source: "Сумма — план записи «Прочий подряд»; НДС — ставка НСИ «Прочий подряд»." };
+    if (lower.includes("факт") && lower.includes("стоимость")) return { title: title, meaning: "Полная фактическая стоимость прочего подряда за отображаемый период.", formula: "Стоимость = Сумма + НДС.", source: "Сумма — факт записи «Прочий подряд»; НДС — ставка НСИ «Прочий подряд»." };
+    if (lower.includes("план") && lower.includes("сумма")) return { title: title, meaning: "Плановая сумма расхода без НДС.", formula: "Вводится пользователем по месяцам; НДС рассчитывается отдельно.", source: "Источник: запись раздела «Прочий подряд»." };
+    if (lower.includes("факт") && lower.includes("сумма")) return { title: title, meaning: "Фактическая сумма расхода без НДС.", formula: "Вводится пользователем по месяцам; НДС рассчитывается отдельно.", source: "Источник: запись раздела «Прочий подряд»." };
+    if (lower.includes("план") && lower.includes("ндс")) return { title: title, meaning: "Плановый НДС расхода.", formula: "НДС = Плановая сумма × ставка НДС за месяц.", source: "Ставка НДС — НСИ «Прочий подряд»." };
+    if (lower.includes("факт") && lower.includes("ндс")) return { title: title, meaning: "Фактический НДС расхода.", formula: "НДС = Фактическая сумма × ставка НДС за месяц.", source: "Ставка НДС — НСИ «Прочий подряд»." };
+    if (lower === "категория") return { title: title, meaning: "Классификация прочего подряда по характеру затрат.", formula: "«Основные» — обеспечивающие достижения затраты на вычислительные мощности, покупку лицензий и т.д.; «Косвенные» — сопутствующие затраты для достижения результата, такие как оплата БГ на ГК, печать ОД, подарки; «Прочие» — навязанный субподряд.", source: "Источник: НСИ «Прочий подряд»." };
+    if (lower === "статья/подрядчик") return { title: title, meaning: "Статья затрат или подрядная организация, не связанная с привлечением специалиста или ресурса.", formula: "Значение выбирается из НСИ; для каждого месяца НДС рассчитывается по ставке этой записи.", source: "Источник: НСИ «Прочий подряд»." };
     if (lower === "роль" || lower === "проектные роли") return { title: title, meaning: "Функциональная роль ресурса в проекте.", formula: "Значение является атрибутом ресурсной записи.", source: "Источник: НСИ «Проектные роли» и страница 06 «Команда»." };
     if (lower === "тип поставщика") return { title: title, meaning: "Классификация поставщика как «Штат» или «Подряд».", formula: "Значение определяется связью поставщика с типом.", source: "Источник: НСИ «Тип поставщика»." };
     if (lower.startsWith("стоимость")) return { title: title, meaning: "Полная часовая стоимость ресурса.", formula: "Стоимость = ставка + привлечение.", source: "Источник: помесячная стоимость в НСИ «Сотрудник / ресурс»." };
@@ -857,6 +866,192 @@
       }) + '</section>';
   }
 
+  function otherSubcontractYears() {
+    const years = new Set((state.snapshot.finance.years || []).map(String));
+    state.otherSubcontractRecords.forEach(function(record) {
+      Object.keys(record.plan || {}).forEach(function(year) { years.add(String(year)); });
+      Object.keys(record.fact || {}).forEach(function(year) { years.add(String(year)); });
+    });
+    return Array.from(years).sort(function(left, right) { return Number(left) - Number(right); });
+  }
+
+  function otherSubcontractRows() {
+    return state.otherSubcontractRecords.filter(function(record) {
+      return !record.archived && (state.project === "all" || record.project === state.project);
+    }).sort(function(left, right) {
+      return (left.otherSubcontract + "|" + left.project).localeCompare(right.otherSubcontract + "|" + right.project, "ru-RU");
+    });
+  }
+
+  function otherSubcontractReference(record) {
+    return referenceRecords("otherSubcontracts", true).find(function(item) { return item.name === record.otherSubcontract; }) || null;
+  }
+
+  function otherSubcontractVatRate(record, year, month) {
+    const reference = otherSubcontractReference(record);
+    return num(reference && reference.vatPlan && reference.vatPlan[String(year)] && reference.vatPlan[String(year)][String(month)]) / 100;
+  }
+
+  function otherSubcontractAmounts(record, kind, year, months) {
+    return (months || Array.from({ length: 12 }, function(_, index) { return index + 1; })).reduce(function(total, month) {
+      const amount = num(record[kind] && record[kind][String(year)] && record[kind][String(month)]);
+      const vat = amount * otherSubcontractVatRate(record, year, month);
+      total.sum += amount;
+      total.vat += vat;
+      total.cost += amount + vat;
+      return total;
+    }, { sum: 0, vat: 0, cost: 0 });
+  }
+
+  function otherSubcontractMetricCells(values) {
+    return '<td class="money-cell">' + money(values.cost) + '</td><td class="money-cell">' + money(values.sum) + '</td><td class="money-cell">' + money(values.vat) + '</td>';
+  }
+
+  function otherSubcontractYearCells(record, year) {
+    if (!state.expandedOtherSubcontractYears[year]) return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year)) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year));
+    return Array.from({ length: 12 }, function(_, index) {
+      const month = index + 1;
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month])) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]));
+    }).join("");
+  }
+
+  function otherSubcontractTable(records, years) {
+    const yearGroups = years.map(function(year) {
+      const expanded = Boolean(state.expandedOtherSubcontractYears[year]);
+      return '<th colspan="' + (expanded ? 72 : 6) + '" class="team-year-group"><button class="year-expand-button" data-other-subcontract-year-expand="' + escapeHtml(year) + '" type="button" aria-expanded="' + expanded + '">' + escapeHtml(year) + '<span>' + (expanded ? "Свернуть" : "По месяцам") + '</span></button></th>';
+    }).join("");
+    const metricHeaders = function() { return '<th>План · стоимость</th><th>План · сумма</th><th>План · НДС</th><th>Факт · стоимость</th><th>Факт · сумма</th><th>Факт · НДС</th>'; };
+    const periodHeaders = years.map(function(year) {
+      if (!state.expandedOtherSubcontractYears[year]) return metricHeaders();
+      return teamMonthLabels.map(function(label) {
+        return '<th>' + escapeHtml(label) + ' · план · стоимость</th><th>' + escapeHtml(label) + ' · план · сумма</th><th>' + escapeHtml(label) + ' · план · НДС</th><th>' + escapeHtml(label) + ' · факт · стоимость</th><th>' + escapeHtml(label) + ' · факт · сумма</th><th>' + escapeHtml(label) + ' · факт · НДС</th>';
+      }).join("");
+    }).join("");
+    const body = records.length ? records.map(function(record) {
+      const reference = otherSubcontractReference(record);
+      return '<tr class="' + (reference && reference.archived ? "inactive-resource-row" : "") + '"><td><strong>' + escapeHtml(record.otherSubcontract) + '</strong></td>' + years.map(function(year) { return otherSubcontractYearCells(record, year); }).join("") + '<td class="subcontract-actions"><button class="edit-button" data-other-subcontract-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-other-subcontract-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("other-subcontract", record.id) + '</td></tr>';
+    }).join("") : '<tr><td colspan="' + (2 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 72 : 6); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
+    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="2">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="2"></th></tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderOtherSubcontracts() {
+    const years = state.year === "all" ? otherSubcontractYears() : [String(state.year)];
+    const records = otherSubcontractRows();
+    const totals = records.reduce(function(result, record) {
+      years.forEach(function(year) {
+        const plan = otherSubcontractAmounts(record, "plan", year);
+        const fact = otherSubcontractAmounts(record, "fact", year);
+        result.plan += plan.cost;
+        result.fact += fact.cost;
+        result.vat += plan.vat + fact.vat;
+      });
+      return result;
+    }, { plan: 0, fact: 0, vat: 0 });
+    return '<section class="metric-grid compact">' + card("План · стоимость", money(totals.plan, true), "сумма + НДС", "violet") + card("Факт · стоимость", money(totals.fact, true), "сумма + НДС", "amber") + card("НДС", money(totals.vat, true), "план и факт выбранного среза", "cyan") + '</section><section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показываются годовые итоги; нажмите на год, чтобы раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><span class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд».</span><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
+  }
+
+  function otherSubcontractOptions(selected) {
+    const records = referenceRecords("otherSubcontracts");
+    const hasSelected = records.some(function(record) { return record.name === selected; });
+    return '<option value="">Выберите статью или подрядчика</option>' + (selected && !hasSelected ? '<option value="" selected>Архивная запись: выберите активную</option>' : "") + records.map(function(record) {
+      return '<option value="' + escapeHtml(record.name) + '"' + (record.name === selected ? " selected" : "") + '>' + escapeHtml(record.name) + '</option>';
+    }).join("");
+  }
+
+  function otherSubcontractMonthInputs(record, year) {
+    return '<div class="other-subcontract-month-grid">' + fullMonthLabels.map(function(label, index) {
+      const month = String(index + 1);
+      const plan = num(record.plan && record.plan[String(year)] && record.plan[String(year)][month]);
+      const fact = num(record.fact && record.fact[String(year)] && record.fact[String(year)][month]);
+      return '<div><strong>' + escapeHtml(label) + '</strong><label>План · сумма<input name="plan-' + month + '" type="number" min="0" step="0.01" value="' + escapeHtml(plan) + '"></label><label>Факт · сумма<input name="fact-' + month + '" type="number" min="0" step="0.01" value="' + escapeHtml(fact) + '"></label></div>';
+    }).join("") + '</div>';
+  }
+
+  function closeOtherSubcontractModal() {
+    const modal = document.getElementById("other-subcontract-modal");
+    if (modal) modal.remove();
+  }
+
+  function showOtherSubcontractModal(record) {
+    const editing = Boolean(record);
+    const year = state.year === "all" ? currentHoursYear() : String(state.year);
+    const item = record || { otherSubcontract: "", project: state.project === "all" ? "" : state.project, plan: {}, fact: {} };
+    const modal = document.createElement("div");
+    modal.id = "other-subcontract-modal";
+    modal.className = "modal-backdrop";
+    modal.innerHTML = '<section class="modal other-subcontract-modal" role="dialog" aria-modal="true" aria-labelledby="other-subcontract-modal-title"><div class="modal-header"><div><p class="eyebrow">Прочий подряд</p><h2 id="other-subcontract-modal-title">' + (editing ? "Редактировать запись" : "Новая запись") + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="other-subcontract-form"><div class="form-grid"><label>Статья/Подрядчик <b>*</b><select name="otherSubcontract">' + otherSubcontractOptions(item.otherSubcontract) + '</select><small data-error="otherSubcontract"></small></label><label>Проект <b>*</b><select name="project">' + referenceOptions("projects", item.project, "Выберите проект") + '</select><small data-error="project"></small></label><label>Год <b>*</b><input name="year" type="number" min="2024" max="2100" value="' + escapeHtml(year) + '" readonly><small></small></label></div><section class="cost-form-section"><div><strong>Сумма по месяцам</strong><span>План и факт</span></div><p class="form-note">НДС не вводится в этой форме: он рассчитывается по месячной ставке выбранной записи НСИ «Прочий подряд».</p>' + otherSubcontractMonthInputs(item, year) + '<small data-error="plan"></small><small data-error="fact"></small></section><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
+    document.body.appendChild(modal);
+    modal.querySelector(".close-button").addEventListener("click", closeOtherSubcontractModal);
+    modal.querySelector("[data-close]").addEventListener("click", closeOtherSubcontractModal);
+    modal.addEventListener("click", function(event) { if (event.target === modal) closeOtherSubcontractModal(); });
+    modal.querySelector("form").addEventListener("submit", async function(event) {
+      event.preventDefault();
+      ["otherSubcontract", "project", "plan", "fact"].forEach(function(name) { formError(name, ""); });
+      const form = event.currentTarget;
+      const selectedYear = String(form.elements.year.value);
+      const plan = Object.assign({}, item.plan || {});
+      const fact = Object.assign({}, item.fact || {});
+      plan[selectedYear] = {};
+      fact[selectedYear] = {};
+      for (let month = 1; month <= 12; month += 1) {
+        plan[selectedYear][String(month)] = num(form.elements["plan-" + month].value);
+        fact[selectedYear][String(month)] = num(form.elements["fact-" + month].value);
+      }
+      const body = { otherSubcontract: form.elements.otherSubcontract.value, project: form.elements.project.value, plan: plan, fact: fact };
+      try {
+        const response = await fetch(editing ? "/api/other-subcontracts/" + encodeURIComponent(record.id) : "/api/other-subcontracts", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const payload = await response.json();
+        if (!response.ok) {
+          Object.keys(payload.fields || {}).forEach(function(name) { formError(name, payload.fields[name]); });
+          if (!payload.fields) throw new Error(payload.error || "Не удалось сохранить запись.");
+          return;
+        }
+        await refreshReferenceData();
+        closeOtherSubcontractModal();
+        render();
+      } catch (error) {
+        formError("otherSubcontract", error.message || "Не удалось сохранить запись.");
+      }
+    });
+  }
+
+  async function deleteOtherSubcontractRecord(record) {
+    if (!window.confirm("Удалить запись «" + record.otherSubcontract + "»?")) return;
+    try {
+      const response = await fetch("/api/other-subcontracts/" + encodeURIComponent(record.id), { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось удалить запись.");
+      await refreshReferenceData();
+      render();
+    } catch (error) {
+      window.alert(error.message || "Не удалось удалить запись.");
+    }
+  }
+
+  function bindOtherSubcontractControls() {
+    const add = document.getElementById("add-other-subcontract");
+    if (add) add.addEventListener("click", function() { showOtherSubcontractModal(null); });
+    document.querySelectorAll("[data-other-subcontract-year-expand]").forEach(function(button) {
+      button.addEventListener("click", function() {
+        const year = button.dataset.otherSubcontractYearExpand;
+        state.expandedOtherSubcontractYears[year] = !state.expandedOtherSubcontractYears[year];
+        render();
+      });
+    });
+    document.querySelectorAll("[data-other-subcontract-edit]").forEach(function(button) {
+      button.addEventListener("click", function() {
+        const record = state.otherSubcontractRecords.find(function(item) { return item.id === button.dataset.otherSubcontractEdit; });
+        if (record) showOtherSubcontractModal(record);
+      });
+    });
+    document.querySelectorAll("[data-other-subcontract-delete]").forEach(function(button) {
+      button.addEventListener("click", function() {
+        const record = state.otherSubcontractRecords.find(function(item) { return item.id === button.dataset.otherSubcontractDelete; });
+        if (record) deleteOtherSubcontractRecord(record);
+      });
+    });
+  }
+
   function subcontractPage(rows) {
     const size = state.subcontractPageSize;
     const totalPages = Math.max(1, Math.ceil(rows.length / size));
@@ -1018,6 +1213,13 @@
     state.subcontracts = payload.records || [];
   }
 
+  async function refreshOtherSubcontracts() {
+    const response = await fetch("/api/other-subcontracts", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Не удалось загрузить прочий подряд.");
+    state.otherSubcontractRecords = payload.records || [];
+  }
+
   function updateProjectFilterOptions() {
     const projects = activeReferenceNames("projects");
     projectFilter.innerHTML = '<option value="all">Все проекты</option>' + projects.map(function(project) {
@@ -1081,23 +1283,27 @@
       fetch("/api/subcontracts", { cache: "no-store" }),
       fetch("/api/references", { cache: "no-store" }),
       fetch("/api/team", { cache: "no-store" }),
-      fetch("/api/staff", { cache: "no-store" })
+      fetch("/api/staff", { cache: "no-store" }),
+      fetch("/api/other-subcontracts", { cache: "no-store" })
     ]);
     const model = await responses[0].json();
     const subcontracts = await responses[1].json();
     const references = await responses[2].json();
     const team = await responses[3].json();
     const staff = await responses[4].json();
+    const otherSubcontracts = await responses[5].json();
     if (!responses[0].ok) throw new Error(model.error || "Не удалось загрузить данные.");
     if (!responses[1].ok) throw new Error(subcontracts.error || "Не удалось загрузить подрядные записи.");
     if (!responses[2].ok) throw new Error(references.error || "Не удалось загрузить справочники.");
     if (!responses[3].ok) throw new Error(team.error || "Не удалось загрузить записи команды.");
     if (!responses[4].ok) throw new Error(staff.error || "Не удалось загрузить штатные записи.");
+    if (!responses[5].ok) throw new Error(otherSubcontracts.error || "Не удалось загрузить прочий подряд.");
     state.snapshot = model.snapshot;
     state.overview = model.overview;
     state.subcontracts = subcontracts.records || [];
     state.teamRecords = team.records || [];
     state.staffRecords = staff.records || [];
+    state.otherSubcontractRecords = otherSubcontracts.records || [];
     state.references = references.directories || {};
     buildPlanIndexes();
     updateProjectFilterOptions();
@@ -1434,11 +1640,11 @@
       : (resource
         ? '<label>Сотрудник / ресурс <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Поставщик <b>*</b><select name="vendor">' + referenceOptions("vendors", item.vendor, "Выберите поставщика") + '</select><small data-error="vendor"></small></label>'
         : (otherSubcontract
-          ? '<label>Наименование <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Категория <b>*</b><select name="category"><option value="Основные"' + (item.category === "Основные" ? " selected" : "") + '>Основные</option><option value="Прочие"' + (item.category === "Прочие" ? " selected" : "") + '>Прочие</option></select><small data-error="category"></small></label>'
+          ? '<label>Статья/Подрядчик <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Категория <b>*</b><select name="category"><option value="Основные"' + (item.category === "Основные" ? " selected" : "") + '>Основные</option><option value="Косвенные"' + (item.category === "Косвенные" ? " selected" : "") + '>Косвенные</option><option value="Прочие"' + (item.category === "Прочие" ? " selected" : "") + '>Прочие</option></select><small data-error="category"></small></label>'
           : '<label>' + (providerType ? "Тип поставщика" : "Наименование") + ' <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label>'));
-    const note = providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные обеспечивают результат, прочие отражают вынужденные затраты." : "")));
+    const note = providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные — затраты на вычислительные мощности, лицензии и т.д.; косвенные — сопутствующие затраты; прочие — навязанный субподряд." : "")));
     const costSection = resource ? referenceCostSection(item) : "";
-    const vatSection = vendor ? referenceVatSection(item) : "";
+    const vatSection = vendor || otherSubcontract ? referenceVatSection(item) : "";
     modal.innerHTML = '<section class="modal reference-modal" role="dialog" aria-modal="true" aria-labelledby="reference-modal-title"><div class="modal-header"><div><p class="eyebrow">НСИ</p><h2 id="reference-modal-title">' + (editing ? "Редактировать: " : "Новая запись: ") + escapeHtml(title) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="reference-form"><div class="form-grid ' + ((vendor || resource || otherSubcontract) ? "" : "single-field") + '">' + fields + '</div>' + costSection + vatSection + '<p class="form-note">' + note + '</p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
     document.body.appendChild(modal);
     modal.querySelector(".close-button").addEventListener("click", closeReferenceModal);
@@ -1446,7 +1652,7 @@
     modal.addEventListener("click", function(event) { if (event.target === modal) closeReferenceModal(); });
     const referenceForm = modal.querySelector("form");
     const vatSectionElement = modal.querySelector('[data-reference-period-section="vat"]');
-    const syncVatVisibility = function() { if (vatSectionElement) vatSectionElement.hidden = referenceForm.elements.providerType.value !== "Подряд"; };
+    const syncVatVisibility = function() { if (vatSectionElement && vendor) vatSectionElement.hidden = referenceForm.elements.providerType.value !== "Подряд"; };
     if (vendor) {
       referenceForm.elements.providerType.addEventListener("change", syncVatVisibility);
       syncVatVisibility();
@@ -1474,6 +1680,7 @@
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
       if (resource) body.costPlan = collectReferencePeriodPlan(referenceForm, "cost");
       if (vendor) body.vatPlan = body.providerType === "Подряд" ? collectReferencePeriodPlan(referenceForm, "vat") : {};
+      if (otherSubcontract) body.vatPlan = collectReferencePeriodPlan(referenceForm, "vat");
       try {
         const response = await fetch(editing ? "/api/references/" + directory + "/" + encodeURIComponent(record.id) : "/api/references/" + directory, {
           method: editing ? "PUT" : "POST",
@@ -2547,20 +2754,21 @@
     const vendor = directory === "vendors";
     const resource = directory === "resources";
     const otherSubcontract = directory === "otherSubcontracts";
-    const headers = vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Наименование", "Тип поставщика", "Категория", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""])));
+    const headers = vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Статья/Подрядчик", "Тип поставщика", "Категория", "НДС", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""])));
     const row = function(record, archivedRow) {
       const editConfig = function(field) { return archivedRow ? null : { scope: "reference", directory: directory, id: record.id, field: field }; };
       const actions = archivedRow
         ? '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="secondary-button compact-button" data-reference-restore="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Восстановить</button>' + historyButton("reference", record.id, directory)
         : '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-reference-delete="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("reference", record.id, directory);
+      const hasVat = otherSubcontract && Object.keys(record.vatPlan || {}).some(function(year) { return Object.keys(record.vatPlan[year] || {}).some(function(month) { return num(record.vatPlan[year][month]) > 0; }); });
       const cells = inlineCell('<strong>' + escapeHtml(record.name) + '</strong>', editConfig("name")) +
         (vendor ? inlineCell(escapeHtml(record.providerType || "—"), editConfig("providerType")) : "") +
         (resource ? inlineCell(escapeHtml(record.vendor || "—"), editConfig("vendor")) + '<td>' + escapeHtml(record.providerType || "—") + '</td>' : "") +
-        (otherSubcontract ? '<td>Подряд</td>' + inlineCell(escapeHtml(record.category || "—"), editConfig("category")) : "");
+        (otherSubcontract ? '<td>Подряд</td>' + inlineCell(escapeHtml(record.category || "—"), editConfig("category")) + '<td>' + (hasVat ? "Да" : "Нет") + '</td>' : "");
       return '<tr>' + cells + '<td><span class="status-chip ' + (archivedRow ? "archived" : "") + '">' + (archivedRow ? "Архив" : "Активна") + '</span></td><td class="reference-actions">' + actions + '</td></tr>';
     };
     const note = vendor ? "Поставщики выбираются в форме подрядной записи только из активных строк и имеют связанный тип."
-      : (providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»." : (resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06." : (otherSubcontract ? "Прочие подрядные организации и статьи расходов. Тип поставщика фиксирован: «Подряд»." : "Создавайте и редактируйте записи справочника.")));
+      : (providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»." : (resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06." : (otherSubcontract ? "Статьи расходов и подрядные организации вне привлечения ресурсов. Тип поставщика фиксирован: «Подряд»; «Да» в НДС означает, что заполнена хотя бы одна месячная ставка." : "Создавайте и редактируйте записи справочника.")));
     return '<article class="panel reference-directory">' + sectionTitle(details.title, note, integer(active.length)) +
       '<div class="table-toolbar"><span class="table-edit-hint">Двойной клик по доступному полю — редактирование</span><button class="primary-button" data-reference-add="' + escapeHtml(directory) + '" type="button">+ Новая запись</button></div>' +
       table(headers, active, function(record) { return row(record, false); }) +
@@ -2584,11 +2792,13 @@
       '</section>';
   }
 
-  const renderers = [renderPipeline, renderIncome, renderCosts, renderSubcontracts, renderStaff, renderTeam, renderReference];
+  const renderers = [renderPipeline, renderIncome, renderCosts, renderSubcontracts, renderStaff, renderTeam, renderReference, renderOtherSubcontracts];
 
   function renderNavigation() {
-    nav.innerHTML = state.snapshot.tabs.map(function(tab, index) {
-      return '<button class="tab-link ' + (index === state.activeTab ? "active" : "") + '" type="button" data-tab="' + index + '"><b>' + String(index + 1).padStart(2, "0") + '</b><span>' + escapeHtml(tab) + '</span></button>';
+    const items = state.snapshot.tabs.map(function(tab, index) { return { tab: tab, index: index, order: index >= 3 ? index + 2 : index + 1 }; });
+    items.splice(3, 0, { tab: "Прочий подряд", index: 7, order: 4 });
+    nav.innerHTML = items.map(function(item) {
+      return '<button class="tab-link ' + (item.index === state.activeTab ? "active" : "") + '" type="button" data-tab="' + item.index + '"><b>' + String(item.order).padStart(2, "0") + '</b><span>' + escapeHtml(item.tab) + '</span></button>';
     }).join("");
     nav.querySelectorAll("[data-tab]").forEach(function(button) {
       button.addEventListener("click", function() { state.activeTab = Number(button.dataset.tab); render(); });
@@ -2600,7 +2810,7 @@
     const isReferencePage = state.activeTab === 6;
     const directory = isReferencePage ? selectedReferenceDirectory() : null;
     const referenceTitle = directory && (state.references[directory] && state.references[directory].title || directory);
-    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : state.snapshot.tabs[state.activeTab];
+    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : (state.activeTab === 7 ? "Прочий подряд" : state.snapshot.tabs[state.activeTab]);
     pageSubtitle.textContent = isReferencePage ? "Справочники, обеспечивающие единые правила ведения данных. Открыт: «" + referenceTitle + "»." : subtitles[state.activeTab];
     renderNavigation();
     yearFilter.value = state.year;
@@ -2611,6 +2821,7 @@
     if (state.activeTab === 4) bindStaffControls();
     if (state.activeTab === 5) bindTeamControls();
     if (state.activeTab === 6) bindReferenceControls();
+    if (state.activeTab === 7) bindOtherSubcontractControls();
     bindInlineEditing();
     bindChangeLogControls();
     setupTableRowNumbering();
@@ -2639,6 +2850,7 @@
       state.teamEmployee = "all";
       state.referenceDirectory = "roles";
       state.expandedSubcontractYears = {};
+      state.expandedOtherSubcontractYears = {};
       state.expandedStaffYears = {};
       state.expandedTeamYears = {};
       state.subcontractPage = 1;
@@ -2827,7 +3039,6 @@
   async function boot() {
     try {
       await refreshReferenceData();
-      status.textContent = state.snapshot.source.dataWorkbook + " · на " + state.snapshot.source.asOf;
       populateFilters();
       bindDataExchangeMenu();
       await bindDesktopSync();

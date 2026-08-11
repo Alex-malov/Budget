@@ -464,6 +464,16 @@ th.sortable-header.has-column-help { padding-right: 66px; }
 .column-header-tooltip span { color: #e6e9ed; }
 .column-header-tooltip b { color: #fff; font-weight: 600; }
 
+/* Раздел «Прочий подряд»: два сценария ввода сумм и длинная помесячная таблица. */
+.other-subcontract-table { min-width: 1320px; }
+.other-subcontract-table .team-year-group { text-align: center; }
+.other-subcontract-month-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.other-subcontract-month-grid > div { display: grid; grid-template-columns: minmax(76px, .8fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 8px; border: 1px solid #dfe5ed; border-radius: 7px; padding: 9px; }
+.other-subcontract-month-grid > div > strong { padding-bottom: 11px; color: #4f5d6c; font-size: 12px; font-weight: 600; }
+.other-subcontract-month-grid label { gap: 4px; font-size: 10px; }
+.other-subcontract-month-grid input { min-width: 0; }
+.other-subcontract-modal { width: min(1080px, 100%); }
+
 @media (max-width: 760px) {
   .sidebar { padding: 16px; }
   main { padding: 22px 14px 48px; }
@@ -478,4 +488,7 @@ th.sortable-header.has-column-help { padding-right: 66px; }
   .sidebar-exchange { margin-top: 16px; padding-top: 14px; }
   .table-edit-hint { width: 100%; }
   .change-log-changes > div { grid-template-columns: 1fr; gap: 4px; }
+  .other-subcontract-month-grid { grid-template-columns: 1fr; }
+  .other-subcontract-month-grid > div { grid-template-columns: 1fr 1fr; }
+  .other-subcontract-month-grid > div > strong { grid-column: 1 / -1; padding-bottom: 0; }
 }

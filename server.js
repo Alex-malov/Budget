@@ -16,6 +16,7 @@ const SUBCONTRACT_OVERRIDES_PATH = path.join(DATA_DIR, "subcontract-overrides.js
 const REFERENCE_OVERRIDES_PATH = path.join(DATA_DIR, "reference-overrides.json");
 const TEAM_OVERRIDES_PATH = path.join(DATA_DIR, "team-overrides.json");
 const STAFF_OVERRIDES_PATH = path.join(DATA_DIR, "staff-overrides.json");
+const OTHER_SUBCONTRACT_OVERRIDES_PATH = path.join(DATA_DIR, "other-subcontract-overrides.json");
 const CHANGE_LOG_PATH = path.join(DATA_DIR, "change-log.json");
 const EXCHANGE_WORKBOOK_PARSER = path.join(ROOT, "scripts", "parse_data_exchange_workbook.mjs");
 const EXCHANGE_WORKBOOK_BUILDER = path.join(ROOT, "scripts", "build_data_exchange_template.mjs");
@@ -172,6 +173,31 @@ function normalizeVatPlan(vatPlan) {
     }).reduce(function(values, entry) { values[entry[0]] = entry[1]; return values; }, {});
     return result;
   }, {});
+}
+
+function normalizeAmountPlan(amountPlan) {
+  const source = amountPlan && typeof amountPlan === "object" ? amountPlan : {};
+  const years = new Set(["2024", "2025", "2026"].concat(Object.keys(source)));
+  return Array.from(years).sort().reduce(function(result, year) {
+    const months = source[year] && typeof source[year] === "object" ? source[year] : {};
+    result[year] = Array.from({ length: 12 }, function(_, index) {
+      const value = Number(months[String(index + 1)]);
+      return [String(index + 1), Number.isFinite(value) && value >= 0 ? value : 0];
+    }).reduce(function(values, entry) { values[entry[0]] = entry[1]; return values; }, {});
+    return result;
+  }, {});
+}
+
+function normalizeOtherSubcontractRecord(record, id, source) {
+  return {
+    id: String(id || record.id),
+    otherSubcontract: String(record.otherSubcontract || record.name || "").trim(),
+    project: String(record.project || "").trim(),
+    plan: normalizeAmountPlan(record.plan),
+    fact: normalizeAmountPlan(record.fact),
+    source: source || record.source || "local",
+    archived: Boolean(record.archived)
+  };
 }
 
 function normalizeTeamRecord(record, id, origin) {
@@ -493,7 +519,7 @@ function normalizeReferenceRecord(directory, record) {
     providerType: directory === "vendors" ? String(record.providerType == null ? "" : record.providerType).trim() : (directory === "otherSubcontracts" ? "Подряд" : ""),
     vendor: directory === "resources" ? String(record.vendor == null ? "" : record.vendor).trim() : "",
     costPlan: directory === "resources" ? normalizeCostPlan(record.costPlan, record.rate, record.attraction) : undefined,
-    vatPlan: directory === "vendors" ? normalizeVatPlan(record.vatPlan) : undefined,
+    vatPlan: directory === "vendors" || directory === "otherSubcontracts" ? normalizeVatPlan(record.vatPlan) : undefined,
     category: directory === "otherSubcontracts" ? String(record.category == null ? "" : record.category).trim() : "",
     sourceKey: String(record.sourceKey || normalizeReferenceKey(name)),
     sourceValues: sourceValues.length ? sourceValues : (name ? [name] : []),
@@ -565,14 +591,15 @@ function isActiveReference(directories, directory, value) {
   return record && !record.archived;
 }
 
-function referenceUsage(snapshot, subcontracts, directory, record, teamRecords, directories) {
+function referenceUsage(snapshot, subcontracts, directory, record, teamRecords, directories, otherSubcontractRecords) {
   const values = new Set(referenceValues(record));
   const matches = function(value) { return values.has(normalizeReferenceKey(value)); };
   if (directory === "vendors") return (subcontracts || []).some(function(item) { return matches(item.vendor); }) || (teamRecords || []).some(function(item) { return matches(item.vendor); }) || ((directories && directories.resources) || []).some(function(item) { return !item.deleted && matches(item.vendor); });
   if (directory === "providers") return (teamRecords || []).some(function(item) { return matches(item.provider); }) || ((directories && directories.vendors) || []).some(function(item) { return !item.deleted && matches(item.providerType); });
   if (directory === "resources") return (teamRecords || []).some(function(item) { return matches(item.employee); }) || (subcontracts || []).some(function(item) { return matches(item.resource); });
-  if (directory === "projects") return (snapshot.cashReceipts || []).some(function(item) { return matches(item.project); }) || (snapshot.staffResources || []).some(function(item) { return matches(item.project); }) || ((snapshot.team && snapshot.team.roster) || []).some(function(item) { return matches(item.project); }) || ((snapshot.team && snapshot.team.resourcePlan) || []).some(function(item) { return matches(item.project); }) || (subcontracts || []).some(function(item) { return matches(item.project); });
+  if (directory === "projects") return (snapshot.cashReceipts || []).some(function(item) { return matches(item.project); }) || (snapshot.staffResources || []).some(function(item) { return matches(item.project); }) || ((snapshot.team && snapshot.team.roster) || []).some(function(item) { return matches(item.project); }) || ((snapshot.team && snapshot.team.resourcePlan) || []).some(function(item) { return matches(item.project); }) || (subcontracts || []).some(function(item) { return matches(item.project); }) || (otherSubcontractRecords || []).some(function(item) { return matches(item.project); });
   if (directory === "roles") return (snapshot.staffResources || []).some(function(item) { return matches(item.role); }) || ((snapshot.team && snapshot.team.roles) || []).some(function(item) { return matches(item.role); }) || ((snapshot.team && snapshot.team.roster) || []).some(function(item) { return matches(item.role); }) || ((snapshot.team && snapshot.team.resourcePlan) || []).some(function(item) { return matches(item.role); });
+  if (directory === "otherSubcontracts") return (otherSubcontractRecords || []).some(function(item) { return matches(item.otherSubcontract); });
   return false;
 }
 
@@ -601,7 +628,7 @@ function validateReference(directory, body, records, editingId, directories) {
       });
     });
   }
-  if (directory === "vendors" && providerType === "Подряд") {
+  if ((directory === "vendors" && providerType === "Подряд") || directory === "otherSubcontracts") {
     const vatPlan = body.vatPlan && typeof body.vatPlan === "object" ? body.vatPlan : {};
     Object.keys(vatPlan).forEach(function(year) {
       Object.keys(vatPlan[year] || {}).forEach(function(month) {
@@ -610,8 +637,8 @@ function validateReference(directory, body, records, editingId, directories) {
       });
     });
   }
-  if (directory === "otherSubcontracts" && !["Основные", "Прочие"].includes(String(body.category || "").trim())) {
-    errors.category = "Выберите категорию: «Основные» или «Прочие»";
+  if (directory === "otherSubcontracts" && !["Основные", "Косвенные", "Прочие"].includes(String(body.category || "").trim())) {
+    errors.category = "Выберите категорию: «Основные», «Косвенные» или «Прочие»";
   }
   return errors;
 }
@@ -713,6 +740,56 @@ async function saveSubcontractRecords(records, overridesPath) {
   const temporary = target + ".tmp";
   await fs.writeFile(temporary, JSON.stringify({ records: records, updatedAt: new Date().toISOString() }, null, 2), "utf8");
   await fs.rename(temporary, target);
+}
+
+async function readOtherSubcontractRecords(overridesPath) {
+  try {
+    const raw = await fs.readFile(overridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH, "utf8");
+    const saved = JSON.parse(raw);
+    if (Array.isArray(saved.records)) return saved.records.map(function(record) {
+      return normalizeOtherSubcontractRecord(record, record.id, record.source);
+    });
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return [];
+}
+
+async function saveOtherSubcontractRecords(records, overridesPath) {
+  const target = overridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH;
+  const temporary = target + ".tmp";
+  await fs.writeFile(temporary, JSON.stringify({ records: records, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  await fs.rename(temporary, target);
+}
+
+function validateAmountPlan(amountPlan, field, errors) {
+  const source = amountPlan && typeof amountPlan === "object" ? amountPlan : {};
+  Object.keys(source).forEach(function(year) {
+    Object.keys(source[year] || {}).forEach(function(month) {
+      const value = Number(source[year][month]);
+      if (!Number.isFinite(value) || value < 0) errors[field] = "Суммы по месяцам должны быть неотрицательными числами";
+    });
+  });
+}
+
+function validateOtherSubcontractRecord(body, directories) {
+  const errors = {};
+  if (!String(body.otherSubcontract || "").trim()) errors.otherSubcontract = "Выберите статью или подрядчика";
+  else if (!isActiveReference(directories, "otherSubcontracts", body.otherSubcontract)) errors.otherSubcontract = "Выберите активную статью или подрядчика из НСИ";
+  if (!String(body.project || "").trim()) errors.project = "Выберите проект";
+  else if (!isActiveReference(directories, "projects", body.project)) errors.project = "Выберите активный проект из НСИ";
+  validateAmountPlan(body.plan, "plan", errors);
+  validateAmountPlan(body.fact, "fact", errors);
+  return errors;
+}
+
+function applyReferencesToOtherSubcontractRecords(records, directories) {
+  return (records || []).map(function(record) {
+    return Object.assign({}, record, {
+      otherSubcontract: resolvedReferenceName(directories, "otherSubcontracts", record.otherSubcontract),
+      project: resolvedReferenceName(directories, "projects", record.project)
+    });
+  });
 }
 
 function validateSubcontract(body) {
@@ -1192,13 +1269,14 @@ async function serveStatic(response, pathname) {
   }
 }
 
-function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamOverridesPath, staffOverridesPath, changeLogPath) {
+function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamOverridesPath, staffOverridesPath, changeLogPath, otherSubcontractOverridesPath) {
   const source = snapshotPath || SNAPSHOT_PATH;
   const overrides = overridesPath || SUBCONTRACT_OVERRIDES_PATH;
   const referenceOverrides = referenceOverridesPath || REFERENCE_OVERRIDES_PATH;
   const teamOverrides = teamOverridesPath || TEAM_OVERRIDES_PATH;
   const staffOverrides = staffOverridesPath || STAFF_OVERRIDES_PATH;
   const changeLog = changeLogPath || CHANGE_LOG_PATH;
+  const otherSubcontractOverrides = otherSubcontractOverridesPath || OTHER_SUBCONTRACT_OVERRIDES_PATH;
   return http.createServer(async function(request, response) {
     const url = new URL(request.url, "http://localhost:" + PORT);
     try {
@@ -1242,6 +1320,12 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
         const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
         const records = await readSubcontractRecords(source, overrides);
         sendJson(response, 200, { records: applyReferencesToSubcontracts(records, directories) });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/other-subcontracts") {
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readOtherSubcontractRecords(otherSubcontractOverrides);
+        sendJson(response, 200, { records: applyReferencesToOtherSubcontractRecords(records, directories) });
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/references") {
@@ -1433,7 +1517,7 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
             providerType: directory === "vendors" ? body.providerType : "",
             vendor: directory === "resources" ? body.vendor : "",
             costPlan: directory === "resources" ? body.costPlan : existing.costPlan,
-            vatPlan: directory === "vendors" ? body.vatPlan : existing.vatPlan,
+            vatPlan: directory === "vendors" || directory === "otherSubcontracts" ? body.vatPlan : existing.vatPlan,
             category: directory === "otherSubcontracts" ? body.category : existing.category,
             archived: body.archived === undefined ? existing.archived : Boolean(body.archived)
           }));
@@ -1453,8 +1537,9 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
           const snapshot = await readSnapshot(source);
           const subcontractRecords = await readSubcontractRecords(source, overrides);
           const teamRecords = await readTeamRecords(source, teamOverrides);
+          const otherSubcontractRecords = await readOtherSubcontractRecords(otherSubcontractOverrides);
           const record = records[index];
-          const used = referenceUsage(snapshot, subcontractRecords, directory, record, teamRecords, directories);
+          const used = referenceUsage(snapshot, subcontractRecords, directory, record, teamRecords, directories, otherSubcontractRecords);
           if (used) record.archived = true;
           else record.deleted = true;
           await saveReferenceDirectories(directories, referenceOverrides);
@@ -1521,6 +1606,63 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
         sendJson(response, 200, { action: used ? "archived" : "deleted", record: record });
         return;
       }
+      if (request.method === "POST" && url.pathname === "/api/other-subcontracts") {
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const errors = validateOtherSubcontractRecord(body, directories);
+        if (Object.keys(errors).length) {
+          sendJson(response, 422, { error: "Проверьте поля прочего подряда", fields: errors });
+          return;
+        }
+        const records = await readOtherSubcontractRecords(otherSubcontractOverrides);
+        const record = normalizeOtherSubcontractRecord(body, "local-other-subcontract-" + Date.now(), "local");
+        records.push(record);
+        await saveOtherSubcontractRecords(records, otherSubcontractOverrides);
+        await logRecordChange("other-subcontract", record, "created", [], "", changeLog);
+        sendJson(response, 201, { record: applyReferencesToOtherSubcontractRecords([record], directories)[0] });
+        return;
+      }
+      if (request.method === "PUT" && url.pathname.startsWith("/api/other-subcontracts/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/other-subcontracts/".length));
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readOtherSubcontractRecords(otherSubcontractOverrides);
+        const index = records.findIndex(function(item) { return item.id === id; });
+        if (index < 0) {
+          sendError(response, 404, "Запись прочего подряда не найдена");
+          return;
+        }
+        const existing = records[index];
+        const merged = Object.assign({}, existing, body, { archived: body.archived === undefined ? existing.archived : Boolean(body.archived) });
+        const errors = validateOtherSubcontractRecord(merged, directories);
+        if (Object.keys(errors).length) {
+          sendJson(response, 422, { error: "Проверьте поля прочего подряда", fields: errors });
+          return;
+        }
+        const record = normalizeOtherSubcontractRecord(merged, id, existing.source);
+        records[index] = record;
+        await saveOtherSubcontractRecords(records, otherSubcontractOverrides);
+        await logRecordChange("other-subcontract", record, existing.archived && !record.archived ? "restored" : "updated", recordChanges(existing, record, { otherSubcontract: "Статья/Подрядчик", project: "Проект", plan: "План · сумма", fact: "Факт · сумма" }), "", changeLog);
+        sendJson(response, 200, { record: applyReferencesToOtherSubcontractRecords([record], directories)[0] });
+        return;
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/other-subcontracts/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/other-subcontracts/".length));
+        const records = await readOtherSubcontractRecords(otherSubcontractOverrides);
+        const index = records.findIndex(function(item) { return item.id === id; });
+        if (index < 0) {
+          sendError(response, 404, "Запись прочего подряда не найдена");
+          return;
+        }
+        const record = records[index];
+        const used = record.source === "model";
+        if (used) record.archived = true;
+        else records.splice(index, 1);
+        await saveOtherSubcontractRecords(records, otherSubcontractOverrides);
+        await logRecordChange("other-subcontract", record, used ? "archived" : "deleted", [], "", changeLog);
+        sendJson(response, 200, { action: used ? "archived" : "deleted", record: record });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/reload") {
         snapshotCache.clear();
         snapshotReads.clear();
@@ -1549,4 +1691,4 @@ function start(port) {
 
 if (require.main === module) start();
 
-module.exports = { buildOverview, createCashSeries, createServer, exchangeNsiExportRows, flattenSubcontracts, normalizeSubcontract, validateSubcontract, readSnapshot, start };
+module.exports = { buildOverview, createCashSeries, createServer, exchangeNsiExportRows, flattenSubcontracts, normalizeSubcontract, normalizeOtherSubcontractRecord, validateSubcontract, validateOtherSubcontractRecord, readSnapshot, start };
