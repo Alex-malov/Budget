@@ -18,6 +18,7 @@ const TEAM_OVERRIDES_PATH = path.join(DATA_DIR, "team-overrides.json");
 const STAFF_OVERRIDES_PATH = path.join(DATA_DIR, "staff-overrides.json");
 const OTHER_SUBCONTRACT_OVERRIDES_PATH = path.join(DATA_DIR, "other-subcontract-overrides.json");
 const CHANGE_LOG_PATH = path.join(DATA_DIR, "change-log.json");
+const VAT_RATES = [0, 5, 7, 10, 22];
 const EXCHANGE_WORKBOOK_PARSER = path.join(ROOT, "scripts", "parse_data_exchange_workbook.mjs");
 const EXCHANGE_WORKBOOK_BUILDER = path.join(ROOT, "scripts", "build_data_exchange_template.mjs");
 const MAX_EXCHANGE_FILE_SIZE = 12 * 1024 * 1024;
@@ -169,7 +170,7 @@ function normalizeVatPlan(vatPlan) {
     const months = source[year] && typeof source[year] === "object" ? source[year] : {};
     result[year] = Array.from({ length: 12 }, function(_, index) {
       const value = Number(months[String(index + 1)]);
-      return [String(index + 1), Number.isFinite(value) && value >= 0 && value <= 100 ? value : 0];
+      return [String(index + 1), Number.isFinite(value) && VAT_RATES.includes(value) ? value : 0];
     }).reduce(function(values, entry) { values[entry[0]] = entry[1]; return values; }, {});
     return result;
   }, {});
@@ -633,7 +634,7 @@ function validateReference(directory, body, records, editingId, directories) {
     Object.keys(vatPlan).forEach(function(year) {
       Object.keys(vatPlan[year] || {}).forEach(function(month) {
         const value = Number(vatPlan[year][month]);
-        if (!Number.isFinite(value) || value < 0 || value > 100) errors.vatPlan = "НДС по месяцам должен быть числом от 0 до 100";
+        if (!Number.isFinite(value) || !VAT_RATES.includes(value)) errors.vatPlan = "Допустимые ставки НДС: 0, 5, 7, 10 или 22%";
       });
     });
   }

@@ -340,12 +340,18 @@
     return String(value || "").replace(/По месяцам|Свернуть/g, "").replace(/\s+/g, " ").trim();
   }
 
-  function tableHeaderHelp(label) {
+  function tableHeaderHelp(label, header) {
     const title = normalizeHeaderLabel(label);
     const lower = title.toLocaleLowerCase("ru-RU");
     const monthNames = teamMonthLabels || [];
     const monthAndFact = title.match(/^(.+) · (план|факт)$/i);
+    const otherSubcontractTable = Boolean(header && header.closest(".other-subcontract-table"));
     if (!title) return null;
+    if (otherSubcontractTable && lower === "план") return { title: title, meaning: "Плановый блок расходов прочего подряда.", formula: "Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС за месяц.", source: "Сумма — введённый план; ставка НДС — НСИ «Прочий подряд»." };
+    if (otherSubcontractTable && lower === "факт") return { title: title, meaning: "Фактический блок расходов прочего подряда.", formula: "Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС за месяц.", source: "Сумма — введённый факт; ставка НДС — НСИ «Прочий подряд»." };
+    if (otherSubcontractTable && (lower === "стоимость" || /· стоимость$/.test(lower))) return { title: title, meaning: "Полная стоимость расхода прочего подряда за отображаемый период.", formula: "Стоимость = Сумма + НДС.", source: "Сумма — план или факт записи; НДС — месячная ставка из НСИ «Прочий подряд»." };
+    if (otherSubcontractTable && (lower === "сумма" || /· сумма$/.test(lower))) return { title: title, meaning: "Сумма расхода без НДС за отображаемый период.", formula: "Вводится пользователем для плана или факта; НДС рассчитывается отдельно.", source: "Источник: запись раздела «Прочий подряд»." };
+    if (otherSubcontractTable && (lower === "ндс" || /· ндс$/.test(lower))) return { title: title, meaning: "НДС расхода прочего подряда за отображаемый период.", formula: "НДС = Сумма × ставка НДС за месяц.", source: "Ставка НДС — НСИ «Прочий подряд»." };
     if (/^20\d{2}$/.test(title)) return { title: title, meaning: "Календарный год, к которому относится блок показателей.", formula: "Значения сгруппированы по периоду " + title + ".", source: "Источник зависит от строки: финансовая модель, ресурсный план или введённый факт." };
     if (monthAndFact && monthNames.includes(monthAndFact[1])) return { title: title, meaning: "Часы за " + monthAndFact[1] + ", разрез «" + monthAndFact[2].toLocaleLowerCase("ru-RU") + "».", formula: monthAndFact[2].toLocaleLowerCase("ru-RU") === "план" ? "Плановые часы из вкладки 06 «Команда»." : "Фактические часы, введённые в реестре текущей страницы.", source: monthAndFact[2].toLocaleLowerCase("ru-RU") === "план" ? "Источник: ресурсный план на странице 06." : "Источник: пользовательские записи факта на страницах 04 или 05." };
     if (monthNames.includes(title)) return { title: title, meaning: "Плановые часы ресурса за " + title + ".", formula: "Значение равно количеству часов в ресурсном плане за соответствующий месяц.", source: "Источник: страница 06 «Команда»." };
@@ -414,7 +420,7 @@
   function setupTableHeaderTooltips() {
     app.querySelectorAll("table th").forEach(function(header) {
       if (header.dataset.headerHelpAttached) return;
-      const help = tableHeaderHelp(header.textContent);
+      const help = tableHeaderHelp(header.textContent, header);
       if (!help) return;
       header.dataset.headerHelpAttached = "true";
       header.classList.add("has-column-help");
@@ -909,9 +915,13 @@
 
   function otherSubcontractYearCells(record, year) {
     if (!state.expandedOtherSubcontractYears[year]) return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year)) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year));
-    return Array.from({ length: 12 }, function(_, index) {
+    const months = Array.from({ length: 12 }, function(_, index) {
       const month = index + 1;
-      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month])) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]));
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month]));
+    }).join("");
+    return months + Array.from({ length: 12 }, function(_, index) {
+      const month = index + 1;
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]));
     }).join("");
   }
 
@@ -920,18 +930,23 @@
       const expanded = Boolean(state.expandedOtherSubcontractYears[year]);
       return '<th colspan="' + (expanded ? 72 : 6) + '" class="team-year-group"><button class="year-expand-button" data-other-subcontract-year-expand="' + escapeHtml(year) + '" type="button" aria-expanded="' + expanded + '">' + escapeHtml(year) + '<span>' + (expanded ? "Свернуть" : "По месяцам") + '</span></button></th>';
     }).join("");
-    const metricHeaders = function() { return '<th>План · стоимость</th><th>План · сумма</th><th>План · НДС</th><th>Факт · стоимость</th><th>Факт · сумма</th><th>Факт · НДС</th>'; };
+    const metricHeaders = function() { return '<th>Стоимость</th><th>Сумма</th><th>НДС</th>'; };
+    const kindHeaders = years.map(function(year) {
+      const colspan = state.expandedOtherSubcontractYears[year] ? 36 : 3;
+      return '<th colspan="' + colspan + '" class="other-subcontract-kind plan">План</th><th colspan="' + colspan + '" class="other-subcontract-kind fact">Факт</th>';
+    }).join("");
     const periodHeaders = years.map(function(year) {
-      if (!state.expandedOtherSubcontractYears[year]) return metricHeaders();
-      return teamMonthLabels.map(function(label) {
-        return '<th>' + escapeHtml(label) + ' · план · стоимость</th><th>' + escapeHtml(label) + ' · план · сумма</th><th>' + escapeHtml(label) + ' · план · НДС</th><th>' + escapeHtml(label) + ' · факт · стоимость</th><th>' + escapeHtml(label) + ' · факт · сумма</th><th>' + escapeHtml(label) + ' · факт · НДС</th>';
-      }).join("");
+      if (!state.expandedOtherSubcontractYears[year]) return metricHeaders() + metricHeaders();
+      const monthMetrics = function(label) {
+        return '<th>' + escapeHtml(label) + ' · стоимость</th><th>' + escapeHtml(label) + ' · сумма</th><th>' + escapeHtml(label) + ' · НДС</th>';
+      };
+      return teamMonthLabels.map(monthMetrics).join("") + teamMonthLabels.map(monthMetrics).join("");
     }).join("");
     const body = records.length ? records.map(function(record) {
       const reference = otherSubcontractReference(record);
       return '<tr class="' + (reference && reference.archived ? "inactive-resource-row" : "") + '"><td><strong>' + escapeHtml(record.otherSubcontract) + '</strong></td>' + years.map(function(year) { return otherSubcontractYearCells(record, year); }).join("") + '<td class="subcontract-actions"><button class="edit-button" data-other-subcontract-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-other-subcontract-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("other-subcontract", record.id) + '</td></tr>';
     }).join("") : '<tr><td colspan="' + (2 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 72 : 6); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
-    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="2">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="2"></th></tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="3">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="3"></th></tr><tr>' + kindHeaders + '</tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   function renderOtherSubcontracts() {
@@ -1568,9 +1583,11 @@
   function vendorVatYearBlock(item, year) {
     const values = item.vatPlan && item.vatPlan[year] || {};
     const average = monthlyAverage(values);
-    return '<details class="period-editor vat-period-editor" data-period-kind="vat" data-period-year="' + escapeHtml(year) + '"><summary><span>' + escapeHtml(year) + '</span><b data-period-average>Средний НДС: ' + escapeHtml(percent(average / 100)) + '</b><em>Развернуть месяцы</em></summary><div class="vat-month-grid">' + teamMonthLabels.map(function(label, index) {
+    const seeded = Object.keys(values).some(function(month) { return Number(values[month]) !== 0; });
+    return '<details class="period-editor vat-period-editor" data-period-kind="vat" data-period-year="' + escapeHtml(year) + '" data-vat-seeded="' + seeded + '"><summary><span>' + escapeHtml(year) + '</span><b data-period-average>Средний НДС: ' + escapeHtml(percent(average / 100)) + '</b><em>Развернуть месяцы</em></summary><div class="vat-month-grid">' + teamMonthLabels.map(function(label, index) {
       const month = index + 1;
-      return '<label><span>' + label + '</span><input data-vat-input type="number" name="vat-' + escapeHtml(year) + '-' + month + '" min="0" max="100" step="0.01" value="' + escapeHtml(num(values[String(month)])) + '"><small>%</small></label>';
+      const selected = num(values[String(month)]);
+      return '<label><span>' + label + '</span><select data-vat-input name="vat-' + escapeHtml(year) + '-' + month + '">' + [0, 5, 7, 10, 22].map(function(rate) { return '<option value="' + rate + '"' + (rate === selected ? " selected" : "") + '>' + rate + '%</option>'; }).join("") + '</select></label>';
     }).join("") + '</div></details>';
   }
 
@@ -1587,7 +1604,16 @@
 
   function referenceVatSection(item) {
     const years = referencePeriodYears(item.vatPlan);
-    return '<section class="cost-form-section reference-period-section" data-reference-period-section="vat"><div><strong>НДС</strong><span>Ставка НДС по месяцам</span></div><p class="form-note">Блоки по годам свёрнуты. В заголовке показана средняя ставка НДС за 12 месяцев.</p><div data-period-blocks="vat">' + years.map(function(year) { return vendorVatYearBlock(item, year); }).join("") + '</div>' + referencePeriodAddControl("vat", item.vatPlan) + '<small data-error="vatPlan"></small></section>';
+    return '<section class="cost-form-section reference-period-section" data-reference-period-section="vat"><div><strong>НДС</strong><span>Ставка НДС по месяцам</span></div><p class="form-note">Допустимы только ставки 0%, 5%, 7%, 10% и 22%. Первая выбранная ставка заполняет последующие месяцы года; любое значение затем можно изменить.</p><div data-period-blocks="vat">' + years.map(function(year) { return vendorVatYearBlock(item, year); }).join("") + '</div>' + referencePeriodAddControl("vat", item.vatPlan) + '<small data-error="vatPlan"></small></section>';
+  }
+
+  function fillFollowingVatMonths(details, input) {
+    if (!details || details.dataset.vatSeeded === "true") return;
+    const inputs = Array.from(details.querySelectorAll("[data-vat-input]"));
+    const index = inputs.indexOf(input);
+    if (index < 0) return;
+    inputs.slice(index + 1).forEach(function(monthInput) { monthInput.value = input.value; });
+    details.dataset.vatSeeded = "true";
   }
 
   function updateReferencePeriodSummary(form, kind, year) {
@@ -1657,9 +1683,15 @@
       referenceForm.elements.providerType.addEventListener("change", syncVatVisibility);
       syncVatVisibility();
     }
-    referenceForm.addEventListener("input", function(event) {
+    const updateReferencePeriods = function(event) {
       const details = event.target.closest("[data-period-kind]");
       if (details && (event.target.matches("[data-cost-input]") || event.target.matches("[data-vat-input]"))) updateReferencePeriodSummary(referenceForm, details.dataset.periodKind, details.dataset.periodYear);
+    };
+    referenceForm.addEventListener("input", updateReferencePeriods);
+    referenceForm.addEventListener("change", function(event) {
+      const details = event.target.closest('[data-period-kind="vat"]');
+      if (details && event.target.matches("[data-vat-input]")) fillFollowingVatMonths(details, event.target);
+      updateReferencePeriods(event);
     });
     referenceForm.querySelectorAll("[data-period-add]").forEach(function(button) {
       button.addEventListener("click", function() {

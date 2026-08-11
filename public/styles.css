@@ -234,9 +234,12 @@ tbody tr:hover { background: #f7fbfd; }
 .period-editor .team-cost-month-grid { margin: 11px 13px 13px; }
 .vat-month-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px 13px 13px; }
 .vat-month-grid label { grid-template-columns: minmax(0, 1fr) 72px auto; align-items: center; gap: 6px; color: #64798a; }
-.vat-month-grid input { min-height: 33px; width: 100%; border: 1px solid #cad8e3; border-radius: 7px; padding: 6px 8px; color: #253d51; font: inherit; font-size: 12px; outline: none; }
-.vat-month-grid input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(35,128,197,.12); }
+.vat-month-grid input, .vat-month-grid select { min-height: 33px; width: 100%; border: 1px solid #cad8e3; border-radius: 7px; padding: 6px 8px; color: #253d51; background: #fff; font: inherit; font-size: 12px; outline: none; }
+.vat-month-grid input:focus, .vat-month-grid select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(35,128,197,.12); }
 .vat-month-grid small { color: #758899; font-size: 11px; }
+.other-subcontract-kind { color: #385a74; background: #f3f8fb; font-size: 11px; letter-spacing: .02em; text-transform: uppercase; }
+.other-subcontract-kind.plan { box-shadow: inset 0 3px 0 #6555c7; }
+.other-subcontract-kind.fact { box-shadow: inset 0 3px 0 #d78a18; }
 .period-add-control { display: flex; align-items: end; gap: 9px; margin-top: 11px; }
 .period-add-control label { min-width: 125px; }
 .hours-form-section { margin-top: 18px; border-top: 1px solid #e1eaf0; padding-top: 15px; }

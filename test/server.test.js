@@ -101,9 +101,13 @@ test("справочники архивируют используемые за�
     const created = await request("/api/references/vendors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд" }) });
     assert.equal(created.status, 201);
 
-    const vatUpdated = await request("/api/references/vendors/" + encodeURIComponent(created.body.record.id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд", vatPlan: { 2027: { 1: 20, 2: 10 } } }) });
+    const invalidVat = await request("/api/references/vendors/" + encodeURIComponent(created.body.record.id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд", vatPlan: { 2027: { 1: 20 } } }) });
+    assert.equal(invalidVat.status, 422);
+    assert.equal(invalidVat.body.fields.vatPlan, "Допустимые ставки НДС: 0, 5, 7, 10 или 22%");
+
+    const vatUpdated = await request("/api/references/vendors/" + encodeURIComponent(created.body.record.id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Новый поставщик", providerType: "Подряд", vatPlan: { 2027: { 1: 22, 2: 10 } } }) });
     assert.equal(vatUpdated.status, 200);
-    assert.equal(vatUpdated.body.record.vatPlan["2027"]["1"], 20);
+    assert.equal(vatUpdated.body.record.vatPlan["2027"]["1"], 22);
     assert.equal(vatUpdated.body.record.vatPlan["2027"]["2"], 10);
 
     const otherSubcontract = await request("/api/references/otherSubcontracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Серверы", category: "Прочие" }) });
@@ -197,10 +201,10 @@ test("хранит план и факт прочего подряда по ме�
   };
   try {
     const reference = await request("/api/references/otherSubcontracts", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Лицензии", category: "Основные", vatPlan: { 2026: { 1: 20, 2: 10 } } })
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Лицензии", category: "Основные", vatPlan: { 2026: { 1: 22, 2: 10 } } })
     });
     assert.equal(reference.status, 201);
-    assert.equal(reference.body.record.vatPlan["2026"]["1"], 20);
+    assert.equal(reference.body.record.vatPlan["2026"]["1"], 22);
 
     const created = await request("/api/other-subcontracts", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ otherSubcontract: "Лицензии", project: "Проект", plan: { 2026: { 1: 1000 } }, fact: { 2026: { 1: 750 } } })
@@ -212,6 +216,9 @@ test("хранит план и факт прочего подряда по ме�
     const records = await request("/api/other-subcontracts");
     assert.equal(records.status, 200);
     assert.equal(records.body.records.length, 1);
+    assert.equal(records.body.records[0].plan["2026"]["1"], 1000);
+    assert.equal(records.body.records[0].fact["2026"]["1"], 750);
+    assert.equal(records.body.records[0].otherSubcontract, "Лицензии");
 
     const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });
     assert.equal(archivedReference.status, 200);
