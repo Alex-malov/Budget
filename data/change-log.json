@@ -1,6 +1,16 @@
 {
   "entries": [
     {
+      "id": "change-1786633358784-zil37t",
+      "changedAt": "2026-08-13T15:02:38.784Z",
+      "entity": "other-subcontract",
+      "directory": "",
+      "recordId": "local-other-subcontract-1786633358734",
+      "recordLabel": "local-other-subcontract-1786633358734",
+      "action": "created",
+      "changes": []
+    },
+    {
       "id": "change-1785776587390-zjh197",
       "changedAt": "2026-08-03T17:03:07.390Z",
       "entity": "staff",
