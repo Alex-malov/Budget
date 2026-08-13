@@ -1,6 +1,77 @@
 {
   "entries": [
     {
+      "id": "change-1786633720215-04o1fv",
+      "changedAt": "2026-08-13T15:08:40.215Z",
+      "entity": "reference",
+      "directory": "otherSubcontracts",
+      "recordId": "local-otherSubcontracts-1786446675435-74ujb",
+      "recordLabel": "1",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "НДС по месяцам · 2026 / 1",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 2",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 3",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 4",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 5",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 6",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 7",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 8",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 9",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 10",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 11",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 12",
+          "before": "0",
+          "after": "22"
+        }
+      ]
+    },
+    {
       "id": "change-1786633703469-wzgu84",
       "changedAt": "2026-08-13T15:08:23.469Z",
       "entity": "other-subcontract",
