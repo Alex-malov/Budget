@@ -1732,7 +1732,7 @@
     if (scope === "reference") {
       if (field === "providerType") return { type: "select", value: record.providerType, options: referenceRecords("providers").map(function(item) { return { value: item.name, label: item.name }; }) };
       if (field === "vendor") return { type: "select", value: record.vendor, options: referenceRecords("vendors").map(function(item) { return { value: item.name, label: item.name }; }) };
-      if (field === "category") return { type: "select", value: record.category, options: ["Основные", "Прочие"].map(function(item) { return { value: item, label: item }; }) };
+      if (field === "category") return { type: "select", value: record.category, options: ["Основные", "Косвенные", "Прочие"].map(function(item) { return { value: item, label: item }; }) };
       return { type: "text", value: record.name };
     }
     if (scope === "team") {
