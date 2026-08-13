@@ -2080,6 +2080,7 @@
     const scope = cell.dataset.inlineScope;
     const field = cell.dataset.inlineField;
     if (scope === "reference") {
+      if (field === "code") return { type: "text", value: record.code || "" };
       if (field === "providerType") return { type: "select", value: record.providerType, options: referenceRecords("providers").map(function(item) { return { value: item.name, label: item.name }; }) };
       if (field === "vendor") return { type: "select", value: record.vendor, options: referenceRecords("vendors").map(function(item) { return { value: item.name, label: item.name }; }) };
       if (field === "category") return { type: "select", value: record.category, options: ["Основные", "Косвенные", "Прочие"].map(function(item) { return { value: item, label: item }; }) };
@@ -2130,7 +2131,7 @@
     let body = {};
     if (scope === "reference") {
       endpoint = "/api/references/" + cell.dataset.inlineDirectory + "/" + encodeURIComponent(record.id);
-      body = { name: record.name, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: record.archived };
+      body = { name: record.name, code: record.code, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: record.archived };
       body[field] = value;
     } else if (scope === "team") {
       endpoint = "/api/team/" + encodeURIComponent(record.id);
@@ -2354,6 +2355,7 @@
   function showReferenceModal(directory, record) {
     const editing = Boolean(record);
     const providerType = directory === "providers";
+    const project = directory === "projects";
     const vendor = directory === "vendors";
     const resource = directory === "resources";
     const otherSubcontract = directory === "otherSubcontracts";
@@ -2362,14 +2364,17 @@
     const modal = document.createElement("div");
     modal.id = "reference-modal";
     modal.className = "modal-backdrop";
-    const fields = vendor
+    const fields = project
+      ? '<label>Код проекта <b>*</b><input name="code" value="' + escapeHtml(item.code || "") + '" minlength="2" maxlength="32" pattern="[A-Za-z0-9_-]{2,32}" placeholder="Например, EDC-2026" autofocus><small data-error="code"></small></label><label>Наименование <b>*</b><input name="name" value="' + escapeHtml(item.name) + '"><small data-error="name"></small></label>'
+      : vendor
       ? '<label>Наименование <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Тип поставщика <b>*</b><select name="providerType">' + referenceOptions("providers", item.providerType, "Выберите тип поставщика") + '</select><small data-error="providerType"></small></label>'
       : (resource
         ? '<label>Сотрудник / ресурс <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Поставщик <b>*</b><select name="vendor">' + referenceOptions("vendors", item.vendor, "Выберите поставщика") + '</select><small data-error="vendor"></small></label>'
         : (otherSubcontract
           ? '<label>Статья/Подрядчик <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Категория <b>*</b><select name="category"><option value="Основные"' + (item.category === "Основные" ? " selected" : "") + '>Основные</option><option value="Косвенные"' + (item.category === "Косвенные" ? " selected" : "") + '>Косвенные</option><option value="Прочие"' + (item.category === "Прочие" ? " selected" : "") + '>Прочие</option></select><small data-error="category"></small></label>'
           : '<label>' + (providerType ? "Тип поставщика" : "Наименование") + ' <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label>'));
-    const note = providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные — затраты на вычислительные мощности, лицензии и т.д.; косвенные — сопутствующие затраты; прочие — навязанный субподряд." : "")));
+    const note = project ? "Код обязателен, уникален и отображается в финансовых формах как «КОД — Наименование». После первой операции поступления или оплаты изменить его нельзя."
+      : (providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные — затраты на вычислительные мощности, лицензии и т.д.; косвенные — сопутствующие затраты; прочие — навязанный субподряд." : ""))));
     const costSection = resource ? referenceCostSection(item) : "";
     const vatSection = vendor || otherSubcontract ? referenceVatSection(item) : "";
     modal.innerHTML = '<section class="modal reference-modal" role="dialog" aria-modal="true" aria-labelledby="reference-modal-title"><div class="modal-header"><div><p class="eyebrow">НСИ</p><h2 id="reference-modal-title">' + (editing ? "Редактировать: " : "Новая запись: ") + escapeHtml(title) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="reference-form"><div class="form-grid ' + ((vendor || resource || otherSubcontract) ? "" : "single-field") + '">' + fields + '</div>' + costSection + vatSection + '<p class="form-note">' + note + '</p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
@@ -2409,7 +2414,7 @@
     });
     referenceForm.addEventListener("submit", async function(event) {
       event.preventDefault();
-      ["name", "providerType", "vendor", "category", "costPlan", "vatPlan"].forEach(function(name) { formError(name, ""); });
+      ["code", "name", "providerType", "vendor", "category", "costPlan", "vatPlan"].forEach(function(name) { formError(name, ""); });
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
       if (resource) body.costPlan = collectReferencePeriodPlan(referenceForm, "cost");
       if (vendor) body.vatPlan = body.providerType === "Подряд" ? collectReferencePeriodPlan(referenceForm, "vat") : {};
@@ -2454,7 +2459,7 @@
       const response = await fetch("/api/references/" + directory + "/" + encodeURIComponent(record.id), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: record.name, value: record.value, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: false })
+        body: JSON.stringify({ name: record.name, code: record.code, value: record.value, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: false })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Не удалось восстановить запись.");
@@ -3524,21 +3529,25 @@
     const vendor = directory === "vendors";
     const resource = directory === "resources";
     const otherSubcontract = directory === "otherSubcontracts";
-    const headers = vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Статья/Подрядчик", "Тип поставщика", "Категория", "НДС", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""])));
+    const headers = project ? ["Код", "Наименование", "Статус", ""] : (vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Статья/Подрядчик", "Тип поставщика", "Категория", "НДС", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""]))));
     const row = function(record, archivedRow) {
       const editConfig = function(field) { return archivedRow ? null : { scope: "reference", directory: directory, id: record.id, field: field }; };
       const actions = archivedRow
         ? '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="secondary-button compact-button" data-reference-restore="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Восстановить</button>' + historyButton("reference", record.id, directory)
         : '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-reference-delete="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("reference", record.id, directory);
       const hasVat = otherSubcontract && Object.keys(record.vatPlan || {}).some(function(year) { return Object.keys(record.vatPlan[year] || {}).some(function(month) { return num(record.vatPlan[year][month]) > 0; }); });
-      const cells = inlineCell('<strong>' + escapeHtml(record.name) + '</strong>', editConfig("name")) +
+      const cells = (project ? inlineCell('<strong>' + escapeHtml(record.code || "—") + '</strong>', editConfig("code")) : "") + inlineCell('<strong>' + escapeHtml(record.name) + '</strong>', editConfig("name")) +
         (vendor ? inlineCell(escapeHtml(record.providerType || "—"), editConfig("providerType")) : "") +
         (resource ? inlineCell(escapeHtml(record.vendor || "—"), editConfig("vendor")) + '<td>' + escapeHtml(record.providerType || "—") + '</td>' : "") +
         (otherSubcontract ? '<td>Подряд</td>' + inlineCell(escapeHtml(record.category || "—"), editConfig("category")) + '<td>' + (hasVat ? "Да" : "Нет") + '</td>' : "");
       return '<tr>' + cells + '<td><span class="status-chip ' + (archivedRow ? "archived" : "") + '">' + (archivedRow ? "Архив" : "Активна") + '</span></td><td class="reference-actions">' + actions + '</td></tr>';
     };
-    const note = vendor ? "Поставщики выбираются в форме подрядной записи только из активных строк и имеют связанный тип."
-      : (providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»." : (resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06." : (otherSubcontract ? "Статьи расходов и подрядные организации вне привлечения ресурсов. Тип поставщика фиксирован: «Подряд»; «Да» в НДС означает, что заполнена хотя бы одна месячная ставка." : "Создавайте и редактируйте записи справочника.")));
+    const note = project ? "Код проекта обязателен для финансовых операций, уникален без учёта регистра и имеет формат 2–32 символа: A–Z, 0–9, «-», «_». После первой финансовой операции код становится неизменяемым."
+      : vendor ? "Поставщики выбираются в форме подрядной записи только из активных строк и имеют связанный тип."
+        : providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»."
+          : resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06."
+            : otherSubcontract ? "Статьи расходов и подрядные организации вне привлечения ресурсов. Тип поставщика фиксирован: «Подряд»; «Да» в НДС означает, что заполнена хотя бы одна месячная ставка."
+              : "Создавайте и редактируйте записи справочника.";
     return '<article class="panel reference-directory">' + sectionTitle(details.title, note, integer(active.length)) +
       '<div class="table-toolbar"><span class="table-edit-hint">Двойной клик по доступному полю — редактирование</span><button class="primary-button" data-reference-add="' + escapeHtml(directory) + '" type="button">+ Новая запись</button></div>' +
       table(headers, active, function(record) { return row(record, false); }) +
