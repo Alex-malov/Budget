@@ -5,6 +5,7 @@
     snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
     year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false, otherSubcontractContextInitialized: false,
     expandedSubcontractYears: {}, expandedOtherSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
+    otherSubcontractView: "compact", costPeriod: "year", costSource: "all", costSearch: "", costOnlyDeviations: false,
     subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null)
   };
   const app = document.getElementById("app");
@@ -44,7 +45,7 @@
   const subtitles = [
     "Сводная финансовая картина по годам исходной модели.",
     "Поступления по проектам и периодам контрактов.",
-    "Структура себестоимости: подряд, ФОТ и прочие затраты.",
+    "Единая финансовая сводка проектных расходов: прочий подряд, подрядные и штатные ресурсы.",
     "Детализация затрат подрядчиков: план из ресурсного плана и введённый факт.",
     "Учёт плановых и фактических часов штатных ресурсов.",
     "Состав команды, роли и распределение по проектам.",
@@ -304,6 +305,16 @@
       document.getElementById("team-employee").addEventListener("change", function(event) { state.teamEmployee = event.target.value; render(); });
       return;
     }
+    if (state.activeTab === 2) {
+      const periodOptions = [
+        ["year", "Год"], ["quarter-1", "I квартал"], ["quarter-2", "II квартал"], ["quarter-3", "III квартал"], ["quarter-4", "IV квартал"]
+      ].concat(fullMonthLabels.map(function(label, index) { return ["month-" + (index + 1), label]; }));
+      contextTabFilters.innerHTML = '<label class="cost-context-period">Период<select id="cost-period">' + periodOptions.map(function(item) {
+        return '<option value="' + item[0] + '"' + (item[0] === state.costPeriod ? ' selected' : '') + '>' + item[1] + '</option>';
+      }).join("") + '</select></label>';
+      document.getElementById("cost-period").addEventListener("change", function(event) { state.costPeriod = event.target.value; render(); });
+      return;
+    }
     if (state.activeTab === 6) return;
   }
 
@@ -354,6 +365,7 @@
     if (otherSubcontractTable && lower === "план") return { title: title, meaning: "Плановый блок расходов прочего подряда.", formula: "Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС за месяц.", source: "Сумма — введённый план; ставка НДС — НСИ «Прочий подряд»." };
     if (otherSubcontractTable && lower === "факт") return { title: title, meaning: "Фактический блок расходов прочего подряда.", formula: "Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС за месяц.", source: "Сумма — введённый факт; ставка НДС — НСИ «Прочий подряд»." };
     if (otherSubcontractTable && (lower === "стоимость" || /· стоимость$/.test(lower))) return { title: title, meaning: "Полная стоимость расхода прочего подряда за отображаемый период.", formula: "Стоимость = Сумма + НДС.", source: "Сумма — план или факт записи; НДС — месячная ставка из НСИ «Прочий подряд»." };
+    if (otherSubcontractTable && lower === "стоимость / сумма / ндс") return { title: title, meaning: "Компактная финансовая ячейка: сверху полная стоимость, ниже — составляющие суммы и НДС.", formula: "Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС за месяц.", source: "Сумма — введённый план или факт; ставка НДС — НСИ «Прочий подряд»." };
     if (otherSubcontractTable && (lower === "сумма" || /· сумма$/.test(lower))) return { title: title, meaning: "Сумма расхода без НДС за отображаемый период.", formula: "Вводится пользователем для плана или факта; НДС рассчитывается отдельно.", source: "Источник: запись раздела «Прочий подряд»." };
     if (otherSubcontractTable && (lower === "ндс" || /· ндс$/.test(lower))) return { title: title, meaning: "НДС расхода прочего подряда за отображаемый период.", formula: "НДС = Сумма × ставка НДС за месяц.", source: "Ставка НДС — НСИ «Прочий подряд»." };
     if (/^20\d{2}$/.test(title)) return { title: title, meaning: "Календарный год, к которому относится блок показателей.", formula: "Значения сгруппированы по периоду " + title + ".", source: "Источник зависит от строки: финансовая модель, ресурсный план или введённый факт." };
@@ -363,6 +375,12 @@
     if (lower === "план" || lower === "часы (план)") return { title: title, meaning: "Плановая трудоёмкость ресурса.", formula: "Количество часов, запланированное на выбранный период.", source: "Источник: страница 06 «Команда»." };
     if (lower === "факт") return { title: title, meaning: "Фактически учтённая трудоёмкость ресурса.", formula: "Сумма часов, введённых пользователем за выбранный период.", source: "Источник: реестры «Суммы и часы подряд» и «Суммы и часы штат»." };
     if (lower === "статья") return { title: title, meaning: "Наименование финансового показателя или статьи затрат.", formula: "Для итоговых строк используются расчёты исходной финансовой модели.", source: "Источник: лист «Свод» исходной модели либо введённая статья затрат." };
+    if (lower === "показатель") return { title: title, meaning: "Строка сравнительного информера по выбранной составляющей расходов.", formula: "Отклонение = Факт − План.", source: "Источник: расчёт текущего выбранного контекста." };
+    if (lower === "источник / объект") return { title: title, meaning: "Иерархия источника затрат и объекта детализации: группа, поставщик или категория.", formula: "Итоговая строка равна сумме дочерних объектов в выбранном периоде.", source: "Прочий подряд, подрядные и штатные ресурсы." };
+    if (lower === "источник") return { title: title, meaning: "Класс источника затрат: прочий подряд, подрядные или штатные ресурсы.", formula: "Значение определяется типом записи и связью с НСИ.", source: "НСИ, «Команда», «Суммы и часы штат/подряд», «Прочий подряд»." };
+    if (lower === "расходы без ндс") return { title: title, meaning: "Сумма затрат до начисления НДС.", formula: "Прочий подряд: введённая сумма; ресурсы: себестоимость ресурсов + привлечение ресурсов.", source: "Введённые расходы и помесячные ставки/часы из НСИ и реестров." };
+    if (lower === "расходы с ндс") return { title: title, meaning: "Полные расходы с учётом НДС.", formula: "Расходы с НДС = Расходы без НДС + НДС.", source: "Расчёт по данным выбранного периода." };
+    if (lower === "отклонение") return { title: title, meaning: "Разница между фактом и планом для показателя.", formula: "Отклонение = Факт − План; процент = Отклонение / План. При нулевом плане процент не рассчитывается.", source: "План и факт текущего среза." };
     if (lower === "проект") return { title: title, meaning: "Проект, к которому относится доход, расход или ресурс.", formula: "Значение является атрибутом записи и не рассчитывается.", source: "Источник: финансовая модель и НСИ «Контракты / проекты»." };
     if (lower === "период гк") return { title: title, meaning: "Период действия государственного контракта или договорного обязательства.", formula: "Отображается как период, заданный для проекта.", source: "Источник: лист «поступления» исходной модели." };
     if (lower === "поступления") return { title: title, meaning: "Денежные поступления по проекту за выбранный срез.", formula: "Сумма поступлений по месяцам, попавшим в выбранный год и проект.", source: "Источник: лист «поступления» исходной модели." };
@@ -853,27 +871,251 @@
       }) + '</section>';
   }
 
-  function renderCosts() {
-    const rows = ["Себестоимость работ всего", "Подрядчики", "Затраты на оплату труда всего", "Прочие затраты всего", "НДС всего"].map(function(label) {
-      return { label: label, values: line(label).values };
+  function blankFinancial() {
+    return { base: 0, resourceCost: 0, attraction: 0, vat: 0, total: 0, known: false };
+  }
+
+  function addFinancial(target, value) {
+    target.base += num(value.base);
+    target.resourceCost += num(value.resourceCost);
+    target.attraction += num(value.attraction);
+    target.vat += num(value.vat);
+    target.total += num(value.total);
+    target.known = target.known || Boolean(value.known);
+    return target;
+  }
+
+  function financialForHours(rate, hours, vatRate, known) {
+    const resourceCost = num(rate.rate) * num(hours);
+    const attraction = num(rate.attraction) * num(hours);
+    const base = resourceCost + attraction;
+    const vat = base * num(vatRate);
+    return { base: base, resourceCost: resourceCost, attraction: attraction, vat: vat, total: base + vat, known: Boolean(known || hours) };
+  }
+
+  function costPeriodMonths() {
+    if (state.costPeriod === "year") return Array.from({ length: 12 }, function(_, index) { return index + 1; });
+    if (state.costPeriod.indexOf("quarter-") === 0) {
+      const quarter = Number(state.costPeriod.split("-")[1]);
+      return [quarter * 3 - 2, quarter * 3 - 1, quarter * 3];
+    }
+    if (state.costPeriod.indexOf("month-") === 0) return [Number(state.costPeriod.split("-")[1])];
+    return Array.from({ length: 12 }, function(_, index) { return index + 1; });
+  }
+
+  function costPeriods() {
+    const years = state.year === "all" ? teamPlanYears() : [String(state.year)];
+    const months = costPeriodMonths();
+    return years.flatMap(function(year) {
+      return months.map(function(month) { return { year: String(year), month: month }; });
     });
-    const year = selectedYear(state.overview.latestYear);
-    const total = valueFor("Себестоимость работ всего", year);
-    const subcontract = valueFor("Подрядчики", year);
-    const payroll = valueFor("Затраты на оплату труда всего", year);
-    return '<section class="metric-grid compact">' +
-      card("Себестоимость", money(total, true), "итого · " + year, "violet") +
-      card("Доля подряда", percent(total ? subcontract / total : null), money(subcontract, true), "amber") +
-      card("Доля ФОТ", percent(total ? payroll / total : null), money(payroll, true), "cyan") +
-      '</section>' +
-      '<section class="grid two"><article class="panel">' + sectionTitle("Структура затрат", "Себестоимость по выбранному году.", String(year)) +
-      barChart(rows.map(function(row) { return { label: row.label, amount: num(row.values[String(year)]) }; }), "amount", "label", function(value) { return money(value, true); }, "financial-bars") +
-      '</article><article class="panel insight-panel">' + sectionTitle("Контроль состава", "Экран соответствует вкладке «Проектные Расходы (себест)».") +
-      '<p>Себестоимость — макроуровень из листа «Свод». На следующих вкладках её детализация разделена на подрядные и штатные ресурсы.</p><p class="muted">Значения НДС выводятся отдельно и не включаются в операционную разницу без НДС.</p></article></section>' +
-      '<section class="panel">' + sectionTitle("Проектные расходы по годам", "Источник: «Свод», строки себестоимости.") +
-      table(["Статья", "2024", "2025", "2026"], rows, function(row) {
-        return '<tr><td>' + escapeHtml(row.label) + '</td><td>' + money(row.values["2024"]) + '</td><td>' + money(row.values["2025"]) + '</td><td>' + money(row.values["2026"]) + '</td></tr>';
-      }) + '</section>';
+  }
+
+  function costPeriodLabel() {
+    const period = state.costPeriod === "year" ? "год" : (state.costPeriod.indexOf("quarter-") === 0
+      ? ["I квартал", "II квартал", "III квартал", "IV квартал"][Number(state.costPeriod.split("-")[1]) - 1]
+      : fullMonthLabels[Number(state.costPeriod.split("-")[1]) - 1]);
+    return (state.year === "all" ? "все годы" : state.year + " год") + " · " + period;
+  }
+
+  function vendorVatRate(vendor, year, month) {
+    const item = referenceRecords("vendors", true).find(function(record) { return record.name === vendor; });
+    const months = item && item.vatPlan && item.vatPlan[String(year)];
+    const hasValue = Boolean(months && Object.prototype.hasOwnProperty.call(months, String(month)));
+    return { value: num(hasValue ? months[String(month)] : 0) / 100, known: hasValue };
+  }
+
+  function costRow(id, source, name, level, project) {
+    return { id: id, source: source, name: name, level: level, project: project || "", plan: blankFinancial(), fact: blankFinancial(), monthly: [], resources: [] };
+  }
+
+  function costAddPeriod(row, period, plan, fact) {
+    addFinancial(row.plan, plan);
+    addFinancial(row.fact, fact);
+    const existing = row.monthly.find(function(value) { return value.year === period.year && value.month === period.month; });
+    if (existing) {
+      addFinancial(existing.plan, plan);
+      addFinancial(existing.fact, fact);
+    } else {
+      row.monthly.push({ year: period.year, month: period.month, plan: Object.assign(blankFinancial(), plan), fact: Object.assign(blankFinancial(), fact) });
+    }
+    return row;
+  }
+
+  function costContractorActualHours(resource, year, month) {
+    return state.subcontracts.filter(function(record) {
+      return !record.archived && record.period === String(year) + "-" + String(month).padStart(2, "0") && subcontractRecordMatchesResource(record, resource);
+    }).reduce(function(total, record) { return total + num(record.actualHours); }, 0);
+  }
+
+  function costStaffActualHours(resource, year, month) {
+    return state.staffRecords.filter(function(record) {
+      return !record.archived && record.project === resource.project && record.employee === resource.employee && record.role === resource.role;
+    }).reduce(function(total, record) { return total + staffActualHours(record, year, month); }, 0);
+  }
+
+  function otherSubcontractAmountKnown(record, kind, year, month) {
+    return Boolean(record[kind] && record[kind][String(year)] && Object.prototype.hasOwnProperty.call(record[kind][String(year)], String(month)));
+  }
+
+  function projectCostRows() {
+    const periods = costPeriods();
+    const rows = [];
+    const contractorByVendor = Object.create(null);
+    const otherByCategory = Object.create(null);
+    const staff = costRow("cost-staff", "Штат", "Штатные ресурсы", 1);
+
+    state.teamRecords.filter(function(resource) {
+      return !resource.archived && isContractorResource(resource) && (state.project === "all" || resource.project === state.project);
+    }).forEach(function(resource) {
+      const vendor = subcontractResourceSupplier(resource);
+      const key = "cost-contractor-" + vendor;
+      const row = contractorByVendor[key] || (contractorByVendor[key] = costRow(key, "Подряд", vendor, 2));
+      row.resources.push(resource.employee);
+      periods.forEach(function(period) {
+        const rate = teamCostValues(resource, period.year, period.month);
+        const vat = vendorVatRate(vendor, period.year, period.month);
+        const planHours = teamHours(resource, period.year, period.month);
+        const factHours = costContractorActualHours(resource, period.year, period.month);
+        const plan = financialForHours(rate, planHours, vat.value, vat.known || planHours);
+        const fact = financialForHours(rate, factHours, vat.value, vat.known || factHours);
+        costAddPeriod(row, period, plan, fact);
+      });
+    });
+
+    state.teamRecords.filter(function(resource) {
+      return !resource.archived && isStaffResource(resource) && (state.project === "all" || resource.project === state.project);
+    }).forEach(function(resource) {
+      staff.resources.push(resource.employee);
+      periods.forEach(function(period) {
+        const rate = teamCostValues(resource, period.year, period.month);
+        const planHours = teamHours(resource, period.year, period.month);
+        const factHours = costStaffActualHours(resource, period.year, period.month);
+        costAddPeriod(staff, period, financialForHours(rate, planHours, 0, planHours), financialForHours(rate, factHours, 0, factHours));
+      });
+    });
+
+    otherSubcontractRows().forEach(function(record) {
+      const reference = otherSubcontractReference(record);
+      const category = reference && reference.category || "Без категории";
+      const key = "cost-other-" + category;
+      const row = otherByCategory[key] || (otherByCategory[key] = costRow(key, "Прочий подряд", category, 2, record.project));
+      periods.forEach(function(period) {
+        const planValues = otherSubcontractAmounts(record, "plan", period.year, [period.month]);
+        const factValues = otherSubcontractAmounts(record, "fact", period.year, [period.month]);
+        const planKnown = otherSubcontractAmountKnown(record, "plan", period.year, period.month);
+        const factKnown = otherSubcontractAmountKnown(record, "fact", period.year, period.month);
+        costAddPeriod(row, period,
+          { base: planValues.sum, resourceCost: 0, attraction: 0, vat: planValues.vat, total: planValues.cost, known: planKnown },
+          { base: factValues.sum, resourceCost: 0, attraction: 0, vat: factValues.vat, total: factValues.cost, known: factKnown });
+      });
+    });
+
+    const contractorChildren = Object.keys(contractorByVendor).sort().map(function(key) { return contractorByVendor[key]; });
+    const otherChildren = Object.keys(otherByCategory).sort().map(function(key) { return otherByCategory[key]; });
+    const sources = [
+      { id: "cost-other", source: "Прочий подряд", name: "Прочий подряд", children: otherChildren },
+      { id: "cost-contractor", source: "Подряд", name: "Привлечение специалистов и ресурсов", children: contractorChildren },
+      { id: "cost-staff-parent", source: "Штат", name: "Штат", children: staff.resources.length ? [staff] : [] }
+    ].map(function(group) {
+      const parent = costRow(group.id, group.source, group.name, 1);
+      group.children.forEach(function(child) {
+        addFinancial(parent.plan, child.plan);
+        addFinancial(parent.fact, child.fact);
+        parent.resources = parent.resources.concat(child.resources);
+        child.monthly.forEach(function(item) {
+          const existing = parent.monthly.find(function(value) { return value.year === item.year && value.month === item.month; });
+          if (existing) { addFinancial(existing.plan, item.plan); addFinancial(existing.fact, item.fact); }
+          else parent.monthly.push({ year: item.year, month: item.month, plan: Object.assign(blankFinancial(), item.plan), fact: Object.assign(blankFinancial(), item.fact) });
+        });
+      });
+      return { parent: parent, children: group.children };
+    });
+    const total = costRow("cost-total", "Итого", state.project === "all" ? "Все проекты" : state.project, 0);
+    sources.forEach(function(group) {
+      addFinancial(total.plan, group.parent.plan);
+      addFinancial(total.fact, group.parent.fact);
+      group.parent.monthly.forEach(function(item) {
+        const existing = total.monthly.find(function(value) { return value.year === item.year && value.month === item.month; });
+        if (existing) { addFinancial(existing.plan, item.plan); addFinancial(existing.fact, item.fact); }
+        else total.monthly.push({ year: item.year, month: item.month, plan: Object.assign(blankFinancial(), item.plan), fact: Object.assign(blankFinancial(), item.fact) });
+      });
+    });
+    return { total: total, sources: sources, rows: [total].concat(sources.flatMap(function(group) { return [group.parent].concat(group.children); })) };
+  }
+
+  function financialDelta(plan, fact) {
+    const delta = num(fact) - num(plan);
+    return { value: delta, percent: num(plan) ? delta / num(plan) : null };
+  }
+
+  function costStatus(plan, fact) {
+    if (!plan && !fact) return { label: "Недостаточно данных", tone: "neutral" };
+    if (!plan && fact) return { label: "Расходы без плана", tone: "red" };
+    if (fact > plan) return { label: "Перерасход", tone: "red" };
+    if (fact < plan) return { label: "Экономия", tone: "green" };
+    return { label: "По плану", tone: "neutral" };
+  }
+
+  function projectCostCell(plan, fact, metric) {
+    const planValue = num(plan[metric]);
+    const factValue = num(fact[metric]);
+    const delta = financialDelta(planValue, factValue);
+    const stateClass = delta.value > 0 ? " is-over" : (delta.value < 0 ? " is-saving" : "");
+    return '<td class="project-financial-cell' + stateClass + '"><strong>' + money(factValue) + '</strong><span>План ' + money(planValue) + '</span><small>Δ ' + (delta.value > 0 ? "+" : "") + money(delta.value) + ' · ' + percent(delta.percent) + '</small></td>';
+  }
+
+  function projectCostMetricsTable(total) {
+    const metrics = [["total", "Расходы с НДС"], ["base", "Расходы без НДС"], ["vat", "НДС"], ["resourceCost", "Себестоимость ресурсов"], ["attraction", "Привлечение ресурсов"]];
+    return '<div class="project-cost-secondary"><table><thead><tr><th>Показатель</th><th>План</th><th>Факт</th><th>Отклонение</th></tr></thead><tbody>' + metrics.map(function(item) {
+      const delta = financialDelta(total.plan[item[0]], total.fact[item[0]]);
+      return '<tr><td>' + item[1] + '</td><td>' + money(total.plan[item[0]]) + '</td><td>' + money(total.fact[item[0]]) + '</td><td class="' + (delta.value > 0 ? "negative" : (delta.value < 0 ? "positive" : "")) + '">' + (delta.value > 0 ? "+" : "") + money(delta.value) + ' · ' + percent(delta.percent) + '</td></tr>';
+    }).join("") + '</tbody></table></div>';
+  }
+
+  function projectCostInformer(model) {
+    const total = model.total;
+    const delta = financialDelta(total.plan.total, total.fact.total);
+    const execution = total.plan.total ? total.fact.total / total.plan.total : null;
+    const status = costStatus(total.plan.total, total.fact.total);
+    return '<section class="panel project-cost-informer"><div class="project-cost-informer-head"><div><p class="eyebrow">Сводка расходов</p><h2>' + escapeHtml(total.name) + '</h2><p>' + escapeHtml(costPeriodLabel()) + '</p></div><span class="comparison-status ' + status.tone + '">' + status.label + '</span></div><div class="project-cost-main-metric"><span>Расходы с НДС · факт</span><strong>' + money(total.fact.total) + '</strong><div><span>План ' + money(total.plan.total) + '</span><span>Отклонение ' + (delta.value > 0 ? "+" : "") + money(delta.value) + ' · ' + percent(delta.percent) + '</span><span>Исполнение ' + percent(execution) + '</span></div></div>' + projectCostMetricsTable(total) + '</section>';
+  }
+
+  function sourceMixPanel(model) {
+    const values = model.sources.map(function(group) { return { label: group.parent.name, plan: group.parent.plan.total, fact: group.parent.fact.total }; });
+    const max = Math.max.apply(Math, values.flatMap(function(item) { return [item.plan, item.fact]; }).concat([1]));
+    const bars = function(kind, title) {
+      return '<div class="source-mix-row"><strong>' + title + '</strong><div>' + values.map(function(item) {
+        const width = Math.max(0, Math.round(num(item[kind]) / max * 100));
+        return '<span class="source-mix-segment" style="width:' + width + '%" title="' + escapeHtml(item.label + ": " + money(item[kind])) + '">' + (width > 16 ? escapeHtml(item.label) : "") + '</span>';
+      }).join("") + '</div></div>';
+    };
+    return '<section class="panel source-mix-panel">' + sectionTitle("Состав источников", "Доли затрат без выделения НДС как отдельного источника.", "план / факт") + bars("plan", "План") + bars("fact", "Факт") + '<div class="source-mix-legend">' + values.map(function(item) { return '<span>' + escapeHtml(item.label) + '</span>'; }).join("") + '</div></section>';
+  }
+
+  function projectCostRowMatches(row) {
+    if (row.level === 0) return true;
+    if (state.costSource !== "all" && row.source !== state.costSource) return false;
+    if (state.costOnlyDeviations && !["total", "base", "vat", "resourceCost", "attraction"].some(function(metric) { return num(row.plan[metric]) !== num(row.fact[metric]); })) return false;
+    const query = normalizedText(state.costSearch);
+    return !query || normalizedText(row.name + " " + row.source + " " + row.resources.join(" ")).includes(query);
+  }
+
+  function projectCostTable(model) {
+    const rows = model.rows.filter(projectCostRowMatches);
+    const body = rows.map(function(row) {
+      const details = row.level > 0 ? '<button class="text-button cost-detail-trigger" data-cost-detail="' + escapeHtml(row.id) + '" type="button">Подробнее</button>' : "";
+      return '<tr class="cost-row level-' + row.level + '"><td><span class="cost-hierarchy level-' + row.level + '">' + (row.level === 1 ? "▾" : (row.level === 2 ? "↳" : "Σ")) + '</span><strong>' + escapeHtml(row.name) + '</strong>' + details + '</td><td>' + escapeHtml(row.source) + '</td>' + projectCostCell(row.plan, row.fact, "base") + projectCostCell(row.plan, row.fact, "resourceCost") + projectCostCell(row.plan, row.fact, "attraction") + projectCostCell(row.plan, row.fact, "vat") + projectCostCell(row.plan, row.fact, "total") + '</tr>';
+    }).join("") || '<tr><td colspan="7">' + empty("Нет строк для выбранных локальных фильтров.") + '</td></tr>';
+    return '<div class="table-wrap project-cost-table-wrap"><table class="project-cost-table"><thead><tr><th>Источник / объект</th><th>Источник</th><th>Расходы без НДС</th><th>Себестоимость ресурсов</th><th>Привлечение ресурсов</th><th>НДС</th><th>Расходы с НДС</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderCosts() {
+    const model = projectCostRows();
+    const options = ["all", "Прочий подряд", "Подряд", "Штат"];
+    return '<section class="grid two project-cost-overview">' + projectCostInformer(model) + sourceMixPanel(model) + '</section>' +
+      '<section class="panel project-cost-register">' + sectionTitle("Проектные расходы (себест)", "Единая расчётная сводка по прочему подряду, подрядным и штатным ресурсам. Значение «факт» берётся из фактических часов и введённых расходов.", costPeriodLabel()) +
+      '<div class="table-toolbar project-cost-toolbar"><div class="table-filters"><label>Источник<select id="cost-source">' + options.map(function(option) { return '<option value="' + option + '"' + (option === state.costSource ? " selected" : "") + '>' + (option === "all" ? "Все источники" : option) + '</option>'; }).join("") + '</select></label><label>Поиск<input id="cost-search" type="search" value="' + escapeHtml(state.costSearch) + '" placeholder="Категория или поставщик"></label><label class="cost-deviation-filter"><input id="cost-only-deviations" type="checkbox"' + (state.costOnlyDeviations ? " checked" : "") + '> Только отклонения</label></div><span class="table-edit-hint">В ячейке: факт, план и отклонение. Откройте «Подробнее» для помесячной расшифровки и формулы.</span></div>' + projectCostTable(model) + '</section>';
   }
 
   function otherSubcontractYears() {
@@ -911,65 +1153,95 @@
       total.sum += amount;
       total.vat += vat;
       total.cost += cost;
+      total.known = total.known || otherSubcontractAmountKnown(record, kind, year, month);
       return total;
-    }, { sum: 0, vat: 0, cost: 0 });
+    }, { sum: 0, vat: 0, cost: 0, known: false });
   }
 
-  function otherSubcontractMetricCells(values, inlineConfig) {
-    return '<td class="money-cell">' + money(values.cost) + '</td>' + inlineCell(money(values.sum), inlineConfig, "money-cell other-subcontract-sum") + '<td class="money-cell">' + money(values.vat) + '</td>';
+  function otherSubcontractCompactCell(values, inlineConfig, kind, periodLabel) {
+    const missing = !values.known;
+    const cost = missing ? "—" : money(values.cost);
+    const sumValue = missing ? "—" : money(values.sum);
+    const vat = missing ? "—" : money(values.vat);
+    const content = '<strong>' + cost + '</strong><span>Сумма <b>' + sumValue + '</b></span><span>НДС <b>' + vat + '</b></span>';
+    return inlineCell(content, inlineConfig, "other-financial-cell " + kind + (missing ? " is-empty" : ""));
+  }
+
+  function otherSubcontractDetailCells(values, inlineConfig) {
+    const missing = !values.known;
+    return '<td class="money-cell">' + (missing ? "—" : money(values.cost)) + '</td>' + inlineCell(missing ? "—" : money(values.sum), inlineConfig, "money-cell other-subcontract-sum") + '<td class="money-cell">' + (missing ? "—" : money(values.vat)) + '</td>';
+  }
+
+  function otherSubcontractMetricCells(values, inlineConfig, kind, periodLabel) {
+    if (state.otherSubcontractView === "detail") return otherSubcontractDetailCells(values, inlineConfig);
+    return otherSubcontractCompactCell(values, inlineConfig, kind, periodLabel);
   }
 
   function otherSubcontractYearCells(record, year) {
-    if (!state.expandedOtherSubcontractYears[year]) return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year)) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year));
+    if (!state.expandedOtherSubcontractYears[year]) return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year), null, "plan", year) + otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year), null, "fact", year);
     const months = Array.from({ length: 12 }, function(_, index) {
       const month = index + 1;
-      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month]), { scope: "otherSubcontract", id: record.id, field: "plan", year: year, month: month });
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "plan", year, [month]), { scope: "otherSubcontract", id: record.id, field: "plan", year: year, month: month }, "plan", fullMonthLabels[month - 1]);
     }).join("");
     return months + Array.from({ length: 12 }, function(_, index) {
       const month = index + 1;
-      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]), { scope: "otherSubcontract", id: record.id, field: "fact", year: year, month: month });
+      return otherSubcontractMetricCells(otherSubcontractAmounts(record, "fact", year, [month]), { scope: "otherSubcontract", id: record.id, field: "fact", year: year, month: month }, "fact", fullMonthLabels[month - 1]);
     }).join("");
   }
 
   function otherSubcontractTable(records, years) {
+    const compact = state.otherSubcontractView === "compact";
+    const metricWidth = compact ? 1 : 3;
     const yearGroups = years.map(function(year) {
       const expanded = Boolean(state.expandedOtherSubcontractYears[year]);
-      return '<th colspan="' + (expanded ? 72 : 6) + '" class="team-year-group"><button class="year-expand-button" data-other-subcontract-year-expand="' + escapeHtml(year) + '" type="button" aria-expanded="' + expanded + '">' + escapeHtml(year) + '<span>' + (expanded ? "Свернуть" : "По месяцам") + '</span></button></th>';
+      return '<th colspan="' + (expanded ? 24 * metricWidth : 2 * metricWidth) + '" class="team-year-group"><button class="year-expand-button" data-other-subcontract-year-expand="' + escapeHtml(year) + '" type="button" aria-expanded="' + expanded + '">' + escapeHtml(year) + '<span>' + (expanded ? "Свернуть" : "По месяцам") + '</span></button></th>';
     }).join("");
-    const metricHeaders = function() { return '<th>Стоимость</th><th>Сумма</th><th>НДС</th>'; };
+    const metricHeaders = function() { return compact ? '<th>Стоимость / Сумма / НДС</th>' : '<th>Стоимость</th><th>Сумма</th><th>НДС</th>'; };
     const kindHeaders = years.map(function(year) {
-      const colspan = state.expandedOtherSubcontractYears[year] ? 36 : 3;
+      const colspan = state.expandedOtherSubcontractYears[year] ? 12 * metricWidth : metricWidth;
       return '<th colspan="' + colspan + '" class="other-subcontract-kind plan">План</th><th colspan="' + colspan + '" class="other-subcontract-kind fact">Факт</th>';
     }).join("");
     const periodHeaders = years.map(function(year) {
       if (!state.expandedOtherSubcontractYears[year]) return metricHeaders() + metricHeaders();
       const monthMetrics = function(label) {
-        return '<th>' + escapeHtml(label) + ' · стоимость</th><th>' + escapeHtml(label) + ' · сумма</th><th>' + escapeHtml(label) + ' · НДС</th>';
+        return compact ? '<th><abbr title="' + escapeHtml(label) + '">' + escapeHtml(label.slice(0, 3)) + '</abbr></th>' : '<th>' + escapeHtml(label) + ' · стоимость</th><th>' + escapeHtml(label) + ' · сумма</th><th>' + escapeHtml(label) + ' · НДС</th>';
       };
-      return teamMonthLabels.map(monthMetrics).join("") + teamMonthLabels.map(monthMetrics).join("");
+      return fullMonthLabels.map(monthMetrics).join("") + fullMonthLabels.map(monthMetrics).join("");
     }).join("");
     const body = records.length ? records.map(function(record) {
       const reference = otherSubcontractReference(record);
       return '<tr class="' + (reference && reference.archived ? "inactive-resource-row" : "") + '"><td>' + escapeHtml(record.project) + '</td><td><strong>' + escapeHtml(record.otherSubcontract) + '</strong></td>' + years.map(function(year) { return otherSubcontractYearCells(record, year); }).join("") + '<td class="subcontract-actions"><button class="edit-button" data-other-subcontract-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-other-subcontract-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("other-subcontract", record.id) + '</td></tr>';
-    }).join("") : '<tr><td colspan="' + (3 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 72 : 6); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
-    return '<div class="table-wrap"><table class="other-subcontract-table"><thead><tr><th rowspan="3">Проект</th><th rowspan="3">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="3"></th></tr><tr>' + kindHeaders + '</tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    }).join("") : '<tr><td colspan="' + (3 + years.reduce(function(total, year) { return total + (state.expandedOtherSubcontractYears[year] ? 24 * metricWidth : 2 * metricWidth); }, 0)) + '">' + empty("Нет расходов прочего подряда для выбранного контекста.") + '</td></tr>';
+    return '<div class="table-wrap other-subcontract-table-wrap"><table class="other-subcontract-table ' + (compact ? "is-compact" : "is-detail") + '"><thead><tr><th rowspan="3">Проект</th><th rowspan="3">Статья/Подрядчик</th>' + yearGroups + '<th rowspan="3"></th></tr><tr>' + kindHeaders + '</tr><tr>' + periodHeaders + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function otherSubcontractComparison(records, years) {
+    const values = records.reduce(function(total, record) {
+      years.forEach(function(year) {
+        ["plan", "fact"].forEach(function(kind) {
+          const amount = otherSubcontractAmounts(record, kind, year);
+          total[kind].sum += amount.sum;
+          total[kind].vat += amount.vat;
+          total[kind].cost += amount.cost;
+          total[kind].known = total[kind].known || amount.known;
+        });
+      });
+      return total;
+    }, { plan: { sum: 0, vat: 0, cost: 0, known: false }, fact: { sum: 0, vat: 0, cost: 0, known: false } });
+    const rows = [["Стоимость", "cost"], ["Сумма без НДС", "sum"], ["НДС", "vat"]].map(function(item, index) {
+      const plan = values.plan[item[1]];
+      const fact = values.fact[item[1]];
+      const delta = financialDelta(plan, fact);
+      const status = index === 0 ? costStatus(plan, fact) : null;
+      return '<tr class="' + (index === 0 ? "comparison-total" : "") + '"><th>' + item[0] + (status ? '<small class="comparison-status ' + status.tone + '">' + status.label + '</small>' : "") + '</th><td>' + (values.plan.known ? money(plan) : "—") + '</td><td>' + (values.fact.known ? money(fact) : "—") + '</td><td class="' + (delta.value > 0 ? "negative" : (delta.value < 0 ? "positive" : "")) + '">' + ((values.plan.known || values.fact.known) ? (delta.value > 0 ? "+" : "") + money(delta.value) + ' · ' + percent(delta.percent) : "—") + '</td></tr>';
+    }).join("");
+    return '<section class="panel other-subcontract-comparison"><div class="comparison-head"><div><p class="eyebrow">Сравнение плана и факта</p><h2>' + escapeHtml(state.project === "all" ? "Все проекты" : state.project) + '</h2><p>' + escapeHtml(state.year === "all" ? "Все годы" : state.year + " год") + '</p></div></div><div class="comparison-table-wrap"><table><thead><tr><th>Показатель</th><th>План</th><th>Факт</th><th>Отклонение</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
   function renderOtherSubcontracts() {
     const years = state.year === "all" ? otherSubcontractYears() : [String(state.year)];
     const records = otherSubcontractRows();
-    const totals = records.reduce(function(result, record) {
-      years.forEach(function(year) {
-        const plan = otherSubcontractAmounts(record, "plan", year);
-        const fact = otherSubcontractAmounts(record, "fact", year);
-        result.plan += plan.cost;
-        result.fact += fact.cost;
-        result.vat += plan.vat + fact.vat;
-      });
-      return result;
-    }, { plan: 0, fact: 0, vat: 0 });
-    const context = (state.project === "all" ? "все проекты" : state.project) + " · " + (state.year === "all" ? "все годы" : state.year + " год");
-    return '<section class="metric-grid compact">' + card("План · стоимость", money(totals.plan, true), "сумма + НДС · " + context, "violet") + card("Факт · стоимость", money(totals.fact, true), "сумма + НДС · " + context, "amber") + card("НДС", money(totals.vat, true), "план и факт · " + context, "cyan") + '</section><section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показываются годовые итоги; нажмите на год, чтобы раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><span class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд». Двойной щелчок по помесячной «Сумме» — изменение.</span><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
+    return otherSubcontractComparison(records, years) + '<section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показаны годы; в каждом году можно раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><div class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд». Двойной щелчок по помесячной «Сумме» — изменение.</div><div class="view-toggle" role="group" aria-label="Представление финансовых ячеек"><button type="button" data-other-subcontract-view="compact" class="' + (state.otherSubcontractView === "compact" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "compact") + '">Компактно</button><button type="button" data-other-subcontract-view="detail" class="' + (state.otherSubcontractView === "detail" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "detail") + '">Детально</button></div><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
   }
 
   function otherSubcontractOptions(selected) {
@@ -1056,7 +1328,13 @@
     document.querySelectorAll("[data-other-subcontract-year-expand]").forEach(function(button) {
       button.addEventListener("click", function() {
         const year = button.dataset.otherSubcontractYearExpand;
-        state.expandedOtherSubcontractYears[year] = !state.expandedOtherSubcontractYears[year];
+        state.expandedOtherSubcontractYears = state.expandedOtherSubcontractYears[year] ? {} : { [year]: true };
+        render();
+      });
+    });
+    document.querySelectorAll("[data-other-subcontract-view]").forEach(function(button) {
+      button.addEventListener("click", function() {
+        state.otherSubcontractView = button.dataset.otherSubcontractView;
         render();
       });
     });
@@ -1071,6 +1349,60 @@
         const record = state.otherSubcontractRecords.find(function(item) { return item.id === button.dataset.otherSubcontractDelete; });
         if (record) deleteOtherSubcontractRecord(record);
       });
+    });
+  }
+
+  function closeProjectCostDetail() {
+    const modal = document.getElementById("project-cost-detail");
+    if (!modal) return;
+    const trigger = modal._returnFocus;
+    modal.remove();
+    if (trigger && document.body.contains(trigger)) trigger.focus();
+  }
+
+  function projectCostDetailMarkup(row) {
+    const months = row.monthly.slice().sort(function(left, right) { return (left.year + String(left.month).padStart(2, "0")).localeCompare(right.year + String(right.month).padStart(2, "0")); });
+    const monthly = months.length ? '<div class="table-wrap project-cost-detail-table"><table><thead><tr><th>Период</th><th>План · стоимость</th><th>Факт · стоимость</th><th>Отклонение</th></tr></thead><tbody>' + months.map(function(item) {
+      const delta = financialDelta(item.plan.total, item.fact.total);
+      return '<tr><td>' + escapeHtml(fullMonthLabels[item.month - 1] + " " + item.year) + '</td><td>' + money(item.plan.total) + '</td><td>' + money(item.fact.total) + '</td><td class="' + (delta.value > 0 ? "negative" : (delta.value < 0 ? "positive" : "")) + '">' + (delta.value > 0 ? "+" : "") + money(delta.value) + ' · ' + percent(delta.percent) + '</td></tr>';
+    }).join("") + '</tbody></table></div>' : empty("За выбранный период данных нет.");
+    const resourceText = row.resources.length ? '<p><b>Ресурсы:</b> ' + escapeHtml(Array.from(new Set(row.resources)).join(", ")) + '</p>' : "";
+    const formula = row.source === "Прочий подряд"
+      ? "Стоимость = Сумма + НДС; НДС = Сумма × месячная ставка НДС из НСИ «Прочий подряд»."
+      : (row.source === "Подряд" ? "Себестоимость ресурсов = Ставка × часы; Привлечение = Привлечение × часы; НДС = (Себестоимость + Привлечение) × месячная ставка НДС поставщика." : "Себестоимость ресурсов = Ставка × часы; Привлечение = Привлечение × часы; НДС не применяется.");
+    return '<aside class="cost-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="project-cost-detail-title"><div class="modal-header"><div><p class="eyebrow">Расшифровка объекта</p><h2 id="project-cost-detail-title">' + escapeHtml(row.name) + '</h2><p class="drawer-context">' + escapeHtml(costPeriodLabel()) + ' · ' + escapeHtml(row.source) + '</p></div><button class="close-button" data-cost-detail-close type="button" aria-label="Закрыть">×</button></div><div class="cost-detail-content"><section><h3>Состав расчёта</h3><p><b>План:</b> ' + money(row.plan.total) + ' · <b>Факт:</b> ' + money(row.fact.total) + '</p><p><b>Себестоимость ресурсов:</b> ' + money(row.fact.resourceCost) + '; <b>Привлечение:</b> ' + money(row.fact.attraction) + '; <b>НДС:</b> ' + money(row.fact.vat) + '.</p><p class="form-note">' + escapeHtml(formula) + '</p>' + resourceText + '</section><section><h3>По месяцам</h3>' + monthly + '</section></div></aside>';
+  }
+
+  function showProjectCostDetail(id, trigger) {
+    closeProjectCostDetail();
+    const model = projectCostRows();
+    const row = model.rows.find(function(item) { return item.id === id; });
+    if (!row) return;
+    const modal = document.createElement("div");
+    modal.id = "project-cost-detail";
+    modal.className = "cost-detail-backdrop";
+    modal._returnFocus = trigger;
+    modal.innerHTML = projectCostDetailMarkup(row);
+    document.body.appendChild(modal);
+    const close = function() { closeProjectCostDetail(); };
+    modal.querySelector("[data-cost-detail-close]").addEventListener("click", close);
+    modal.addEventListener("click", function(event) { if (event.target === modal) close(); });
+    const keydown = function(event) {
+      if (event.key === "Escape") { event.preventDefault(); close(); document.removeEventListener("keydown", keydown); }
+    };
+    document.addEventListener("keydown", keydown);
+    modal.querySelector("[data-cost-detail-close]").focus();
+  }
+
+  function bindProjectCostControls() {
+    const source = document.getElementById("cost-source");
+    const search = document.getElementById("cost-search");
+    const deviations = document.getElementById("cost-only-deviations");
+    if (source) source.addEventListener("change", function(event) { state.costSource = event.target.value; render(); });
+    if (search) search.addEventListener("input", function(event) { state.costSearch = event.target.value; render(); });
+    if (deviations) deviations.addEventListener("change", function(event) { state.costOnlyDeviations = event.target.checked; render(); });
+    document.querySelectorAll("[data-cost-detail]").forEach(function(button) {
+      button.addEventListener("click", function() { showProjectCostDetail(button.dataset.costDetail, button); });
     });
   }
 
@@ -2873,6 +3205,7 @@
     if (state.activeTab === 5) bindTeamControls();
     if (state.activeTab === 6) bindReferenceControls();
     if (state.activeTab === 7) bindOtherSubcontractControls();
+    if (state.activeTab === 2) bindProjectCostControls();
     bindInlineEditing();
     bindChangeLogControls();
     setupTableRowNumbering();
@@ -2900,6 +3233,11 @@
       state.teamRole = "all";
       state.teamEmployee = "all";
       state.referenceDirectory = "roles";
+      state.otherSubcontractView = "compact";
+      state.costPeriod = "year";
+      state.costSource = "all";
+      state.costSearch = "";
+      state.costOnlyDeviations = false;
       state.expandedSubcontractYears = {};
       state.expandedOtherSubcontractYears = {};
       state.expandedStaffYears = {};
