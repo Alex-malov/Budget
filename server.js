@@ -17,8 +17,12 @@ const REFERENCE_OVERRIDES_PATH = path.join(DATA_DIR, "reference-overrides.json")
 const TEAM_OVERRIDES_PATH = path.join(DATA_DIR, "team-overrides.json");
 const STAFF_OVERRIDES_PATH = path.join(DATA_DIR, "staff-overrides.json");
 const OTHER_SUBCONTRACT_OVERRIDES_PATH = path.join(DATA_DIR, "other-subcontract-overrides.json");
+const INCOME_EVENTS_PATH = path.join(DATA_DIR, "income-events.json");
+const CONTRACTOR_PAYMENTS_PATH = path.join(DATA_DIR, "contractor-payments.json");
+const FINANCIAL_RATES_PATH = path.join(DATA_DIR, "financial-rates.json");
 const CHANGE_LOG_PATH = path.join(DATA_DIR, "change-log.json");
 const VAT_RATES = [0, 5, 7, 10, 22];
+const FINANCIAL_RATE_TYPES = ["profitTax", "investment", "overdraft", "directorate"];
 const EXCHANGE_WORKBOOK_PARSER = path.join(ROOT, "scripts", "parse_data_exchange_workbook.mjs");
 const EXCHANGE_WORKBOOK_BUILDER = path.join(ROOT, "scripts", "build_data_exchange_template.mjs");
 const MAX_EXCHANGE_FILE_SIZE = 12 * 1024 * 1024;
@@ -26,7 +30,7 @@ const snapshotCache = new Map();
 const snapshotReads = new Map();
 const REFERENCE_DIRECTORIES = {
   roles: { title: "Проектные роли", fields: ["name"] },
-  projects: { title: "Контракты / проекты", fields: ["name"] },
+  projects: { title: "Контракты / проекты", fields: ["code", "name"] },
   vendors: { title: "Поставщики", fields: ["name"] },
   providers: { title: "Тип поставщика", fields: ["name"] },
   resources: { title: "Сотрудник / ресурс", fields: ["name", "vendor"] },
@@ -512,9 +516,11 @@ function buildReferenceDirectories(snapshot, subcontracts) {
 function normalizeReferenceRecord(directory, record) {
   const sourceValues = Array.isArray(record.sourceValues) ? record.sourceValues.map(function(item) { return String(item); }) : [];
   const name = String(record.name == null ? "" : record.name).trim();
+  const code = directory === "projects" ? String(record.code == null ? "" : record.code).trim().toUpperCase() : "";
   return {
     id: String(record.id),
     name: name,
+    code: code,
     value: "",
     parent: "",
     providerType: directory === "vendors" ? String(record.providerType == null ? "" : record.providerType).trim() : (directory === "otherSubcontracts" ? "Подряд" : ""),
@@ -576,7 +582,7 @@ async function saveReferenceDirectories(directories, referenceOverridesPath) {
 }
 
 function referenceValues(record) {
-  const values = [record.name].concat(record.sourceValues || []);
+  const values = [record.name, record.code].concat(record.sourceValues || []);
   return values.map(normalizeReferenceKey).filter(Boolean);
 }
 
@@ -614,6 +620,16 @@ function validateReference(directory, body, records, editingId, directories) {
     return !record.deleted && record.id !== editingId && normalizeReferenceKey(record.name) === normalizeReferenceKey(name);
   });
   if (!errors.name && duplicate) errors.name = "Такая запись уже есть в справочнике";
+  if (directory === "projects") {
+    const code = String(body.code || "").trim().toUpperCase();
+    if (!/^[A-ZА-ЯЁ0-9_-]{2,32}$/u.test(code)) errors.code = "Код: 2–32 символа, буквы, цифры, «-» или «_», без пробелов";
+    const codeDuplicate = (records || []).some(function(record) {
+      return !record.deleted && record.id !== editingId && String(record.code || "").toUpperCase() === code;
+    });
+    if (!errors.code && codeDuplicate) errors.code = "Код проекта должен быть уникальным";
+    const existing = (records || []).find(function(record) { return record.id === editingId; });
+    if (existing && existing.code && existing.code !== code && referenceUsage({ cashReceipts: [] }, [], "projects", existing, [], directories, [])) errors.code = "Код связан с операциями и не может быть изменён";
+  }
   if (directory === "vendors") {
     if (!providerType) errors.providerType = "Выберите тип поставщика";
     else if (!isActiveReference(directories || {}, "providers", providerType)) errors.providerType = "Выберите активный тип поставщика";
@@ -802,6 +818,165 @@ async function saveOtherSubcontractRecords(records, overridesPath) {
   const temporary = target + "." + process.pid + "." + Date.now() + ".tmp";
   await fs.writeFile(temporary, JSON.stringify({ records: records, updatedAt: new Date().toISOString() }, null, 2), "utf8");
   await fs.rename(temporary, target);
+}
+
+async function readFinancialRecords(filename, defaults) {
+  try {
+    const parsed = JSON.parse(await fs.readFile(filename, "utf8"));
+    return Array.isArray(parsed.records) ? parsed.records : [];
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return defaults || [];
+  }
+}
+
+async function saveFinancialRecords(filename, records) {
+  const temporary = filename + "." + process.pid + "." + Date.now() + ".tmp";
+  await fs.writeFile(temporary, JSON.stringify({ records: records, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  await fs.rename(temporary, filename);
+}
+
+function normalizePeriod(value) {
+  const period = String(value || "");
+  return /^20\d{2}-(0[1-9]|1[0-2])$/.test(period) ? period : "";
+}
+
+function safeMoney(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : NaN;
+}
+
+function projectReferenceById(directories, id) {
+  return (directories.projects || []).find(function(record) { return record.id === String(id || "") && !record.deleted; }) || null;
+}
+
+function normalizeIncomeEvent(record, directories, id) {
+  const project = projectReferenceById(directories, record.projectId);
+  const gross = safeMoney(record.gross);
+  const vatRate = Number(record.vatRate);
+  const vat = Number.isFinite(gross) && VAT_RATES.includes(vatRate) ? gross * vatRate / (100 + vatRate) : null;
+  return {
+    id: String(id || record.id || "income-" + Date.now()),
+    projectId: String(record.projectId || ""),
+    projectCode: project ? project.code : String(record.projectCode || ""),
+    project: project ? project.name : String(record.project || ""),
+    scenario: record.scenario === "fact" ? "fact" : "plan",
+    period: normalizePeriod(record.period),
+    gross: Number.isFinite(gross) ? gross : 0,
+    vatRate: VAT_RATES.includes(vatRate) ? vatRate : null,
+    vat: vat,
+    net: vat == null ? null : (Number.isFinite(gross) ? gross - vat : null),
+    comment: String(record.comment || "").trim(),
+    archived: Boolean(record.archived)
+  };
+}
+
+function validateIncomeEvent(body, directories) {
+  const errors = {};
+  const project = projectReferenceById(directories, body.projectId);
+  if (!project || project.archived) errors.projectId = "Выберите активный проект";
+  else if (!project.code) errors.projectId = "Для проекта не назначен код. Укажите код в НСИ «Контракты / проекты».";
+  if (!["plan", "fact"].includes(body.scenario)) errors.scenario = "Выберите план или факт";
+  if (!normalizePeriod(body.period)) errors.period = "Укажите месяц в формате ГГГГ-ММ";
+  if (!Number.isFinite(safeMoney(body.gross))) errors.gross = "Укажите неотрицательное поступление с НДС";
+  if (!VAT_RATES.includes(Number(body.vatRate))) errors.vatRate = "Выберите ставку НДС";
+  return errors;
+}
+
+async function readIncomeEvents(directories) {
+  const records = await readFinancialRecords(INCOME_EVENTS_PATH);
+  return records.map(function(record) { return normalizeIncomeEvent(record, directories, record.id); });
+}
+
+function normalizePayment(record, directories, id) {
+  const project = projectReferenceById(directories, record.projectId);
+  const gross = safeMoney(record.gross);
+  const vatRate = Number(record.vatRate);
+  const vat = Number.isFinite(gross) && VAT_RATES.includes(vatRate) ? gross * vatRate / (100 + vatRate) : null;
+  const allocations = Array.isArray(record.allocations) ? record.allocations.map(function(item) {
+    return { accrualKey: String(item.accrualKey || ""), amount: Number(item.amount || 0) };
+  }).filter(function(item) { return item.amount > 0; }) : [];
+  return {
+    id: String(id || record.id || "payment-" + Date.now()),
+    projectId: String(record.projectId || ""),
+    projectCode: project ? project.code : String(record.projectCode || ""),
+    project: project ? project.name : String(record.project || ""),
+    scenario: record.scenario === "fact" ? "fact" : "plan",
+    source: record.source === "other" ? "other" : "resource",
+    contractor: String(record.contractor || "").trim(),
+    period: normalizePeriod(record.period),
+    gross: Number.isFinite(gross) ? gross : 0,
+    vatRate: VAT_RATES.includes(vatRate) ? vatRate : null,
+    vat: vat,
+    net: vat == null ? null : (Number.isFinite(gross) ? gross - vat : null),
+    documentDate: String(record.documentDate || ""),
+    documentNumber: String(record.documentNumber || "").trim(),
+    comment: String(record.comment || "").trim(),
+    allocations: allocations,
+    archived: Boolean(record.archived)
+  };
+}
+
+function validatePayment(body, directories) {
+  const errors = {};
+  const project = projectReferenceById(directories, body.projectId);
+  if (!project || project.archived) errors.projectId = "Выберите активный проект";
+  else if (!project.code) errors.projectId = "Для проекта не назначен код. Укажите код в НСИ «Контракты / проекты».";
+  if (!["plan", "fact"].includes(body.scenario)) errors.scenario = "Выберите вид оплаты";
+  if (!["resource", "other"].includes(body.source)) errors.source = "Выберите источник оплаты";
+  if (!String(body.contractor || "").trim()) errors.contractor = "Укажите подрядчика";
+  if (!normalizePeriod(body.period)) errors.period = "Укажите месяц оплаты";
+  const gross = safeMoney(body.gross);
+  if (!Number.isFinite(gross)) errors.gross = "Укажите неотрицательную сумму оплаты с НДС";
+  if (!VAT_RATES.includes(Number(body.vatRate))) errors.vatRate = "Выберите ставку НДС";
+  const allocated = (Array.isArray(body.allocations) ? body.allocations : []).reduce(function(total, item) { return total + Number(item.amount || 0); }, 0);
+  if (allocated < 0 || (Number.isFinite(gross) && allocated - gross > 0.000001)) errors.allocations = "Сумма распределений не может быть больше суммы оплаты";
+  return errors;
+}
+
+async function readContractorPayments(directories) {
+  const records = await readFinancialRecords(CONTRACTOR_PAYMENTS_PATH);
+  return records.map(function(record) { return normalizePayment(record, directories, record.id); });
+}
+
+function defaultFinancialRates() {
+  return [
+    { id: "default-profit-tax", type: "profitTax", projectId: "", year: 2026, rate: 5 },
+    { id: "default-investment", type: "investment", projectId: "", year: 2026, rate: 10 },
+    { id: "default-overdraft", type: "overdraft", projectId: "", year: 2026, rate: 0 }
+  ];
+}
+
+function normalizeFinancialRate(record, directories, id) {
+  const project = projectReferenceById(directories, record.projectId);
+  return {
+    id: String(id || record.id || "financial-rate-" + Date.now()),
+    type: FINANCIAL_RATE_TYPES.includes(record.type) ? record.type : "profitTax",
+    projectId: String(record.projectId || ""),
+    projectCode: project ? project.code : "",
+    project: project ? project.name : "Все проекты",
+    year: Number(record.year),
+    rate: Number(record.rate),
+    archived: Boolean(record.archived)
+  };
+}
+
+function validateFinancialRate(body, directories, records, editingId) {
+  const errors = {};
+  if (!FINANCIAL_RATE_TYPES.includes(body.type)) errors.type = "Выберите тип финансовой ставки";
+  if (!Number.isInteger(Number(body.year)) || Number(body.year) < 2024 || Number(body.year) > 2100) errors.year = "Укажите год";
+  if (!Number.isFinite(Number(body.rate)) || Number(body.rate) < 0 || Number(body.rate) > 100) errors.rate = "Ставка должна быть от 0% до 100%";
+  if (body.projectId && !projectReferenceById(directories, body.projectId)) errors.projectId = "Выберите проект из НСИ";
+  const duplicate = (records || []).some(function(item) {
+    return item.id !== editingId && !item.archived && item.type === body.type && String(item.projectId || "") === String(body.projectId || "") && Number(item.year) === Number(body.year);
+  });
+  if (duplicate) errors.rate = "Для этой ставки, проекта и года уже есть активная запись";
+  return errors;
+}
+
+async function readFinancialRates(directories) {
+  const saved = await readFinancialRecords(FINANCIAL_RATES_PATH, defaultFinancialRates());
+  return saved.map(function(record) { return normalizeFinancialRate(record, directories, record.id); });
 }
 
 function validateAmountPlan(amountPlan, field, errors) {
@@ -1370,6 +1545,142 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
         sendJson(response, 200, { snapshot: resolvedSnapshot, overview: buildOverview(resolvedSnapshot) });
         return;
       }
+      if (request.method === "GET" && url.pathname === "/api/financial") {
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const result = await Promise.all([readIncomeEvents(directories), readContractorPayments(directories), readFinancialRates(directories)]);
+        sendJson(response, 200, { incomes: result[0], payments: result[1], rates: result[2] });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/financial/incomes") {
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const errors = validateIncomeEvent(body, directories);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте поля поступления", fields: errors }); return; }
+        const records = await readIncomeEvents(directories);
+        const record = normalizeIncomeEvent(body, directories, "income-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7));
+        records.push(record);
+        await saveFinancialRecords(INCOME_EVENTS_PATH, records);
+        await logRecordChange("income", record, "created", [], "", changeLog);
+        sendJson(response, 201, { record: record });
+        return;
+      }
+      if (request.method === "PUT" && url.pathname.startsWith("/api/financial/incomes/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/incomes/".length));
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readIncomeEvents(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Поступление не найдено"); return; }
+        const existing = records[index];
+        const merged = Object.assign({}, existing, body);
+        const errors = validateIncomeEvent(merged, directories);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте поля поступления", fields: errors }); return; }
+        const record = normalizeIncomeEvent(merged, directories, id);
+        records[index] = record;
+        await saveFinancialRecords(INCOME_EVENTS_PATH, records);
+        await logRecordChange("income", record, "updated", recordChanges(existing, record, { scenario: "Сценарий", period: "Месяц", gross: "Поступление с НДС", vatRate: "Ставка НДС", comment: "Комментарий" }), "", changeLog);
+        sendJson(response, 200, { record: record });
+        return;
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/financial/incomes/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/incomes/".length));
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readIncomeEvents(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Поступление не найдено"); return; }
+        const record = records[index];
+        records.splice(index, 1);
+        await saveFinancialRecords(INCOME_EVENTS_PATH, records);
+        await logRecordChange("income", record, "deleted", [], "", changeLog);
+        sendJson(response, 200, { action: "deleted" });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/financial/payments") {
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const errors = validatePayment(body, directories);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте поля оплаты", fields: errors }); return; }
+        const records = await readContractorPayments(directories);
+        const record = normalizePayment(body, directories, "payment-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7));
+        records.push(record);
+        await saveFinancialRecords(CONTRACTOR_PAYMENTS_PATH, records);
+        await logRecordChange("payment", record, "created", [], "", changeLog);
+        sendJson(response, 201, { record: record });
+        return;
+      }
+      if (request.method === "PUT" && url.pathname.startsWith("/api/financial/payments/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/payments/".length));
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readContractorPayments(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Оплата не найдена"); return; }
+        const existing = records[index];
+        const merged = Object.assign({}, existing, body);
+        const errors = validatePayment(merged, directories);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте поля оплаты", fields: errors }); return; }
+        const record = normalizePayment(merged, directories, id);
+        records[index] = record;
+        await saveFinancialRecords(CONTRACTOR_PAYMENTS_PATH, records);
+        await logRecordChange("payment", record, "updated", recordChanges(existing, record, { scenario: "Вид оплаты", period: "Месяц оплаты", gross: "Оплачено с НДС", vatRate: "Ставка НДС", comment: "Комментарий" }), "", changeLog);
+        sendJson(response, 200, { record: record });
+        return;
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/financial/payments/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/payments/".length));
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readContractorPayments(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Оплата не найдена"); return; }
+        const record = records[index]; records.splice(index, 1);
+        await saveFinancialRecords(CONTRACTOR_PAYMENTS_PATH, records);
+        await logRecordChange("payment", record, "deleted", [], "", changeLog);
+        sendJson(response, 200, { action: "deleted" });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/financial/rates") {
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readFinancialRates(directories);
+        const errors = validateFinancialRate(body, directories, records);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте финансовую ставку", fields: errors }); return; }
+        const record = normalizeFinancialRate(body, directories, "financial-rate-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7));
+        records.push(record);
+        await saveFinancialRecords(FINANCIAL_RATES_PATH, records);
+        await logRecordChange("financial-rate", record, "created", [], "", changeLog);
+        sendJson(response, 201, { record: record });
+        return;
+      }
+      if (request.method === "PUT" && url.pathname.startsWith("/api/financial/rates/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/rates/".length));
+        const body = await readBody(request);
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readFinancialRates(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Финансовая ставка не найдена"); return; }
+        const existing = records[index];
+        const merged = Object.assign({}, existing, body);
+        const errors = validateFinancialRate(merged, directories, records, id);
+        if (Object.keys(errors).length) { sendJson(response, 422, { error: "Проверьте финансовую ставку", fields: errors }); return; }
+        const record = normalizeFinancialRate(merged, directories, id);
+        records[index] = record;
+        await saveFinancialRecords(FINANCIAL_RATES_PATH, records);
+        await logRecordChange("financial-rate", record, "updated", recordChanges(existing, record, { type: "Тип ставки", projectId: "Проект", year: "Год", rate: "Ставка" }), "", changeLog);
+        sendJson(response, 200, { record: record });
+        return;
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/financial/rates/")) {
+        const id = decodeURIComponent(url.pathname.slice("/api/financial/rates/".length));
+        const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
+        const records = await readFinancialRates(directories);
+        const index = records.findIndex(function(record) { return record.id === id; });
+        if (index < 0) { sendError(response, 404, "Финансовая ставка не найдена"); return; }
+        const record = records[index]; records.splice(index, 1);
+        await saveFinancialRecords(FINANCIAL_RATES_PATH, records);
+        await logRecordChange("financial-rate", record, "deleted", [], "", changeLog);
+        sendJson(response, 200, { action: "deleted" });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/data-exchange/import") {
         try {
           const body = await readBody(request);
@@ -1549,6 +1860,7 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
           const record = normalizeReferenceRecord(directory, {
             id: id,
             name: body.name,
+            code: body.code,
             providerType: body.providerType,
             vendor: body.vendor,
             costPlan: body.costPlan,
@@ -1572,6 +1884,15 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
             return;
           }
           const body = await readBody(request);
+          if (directory === "projects") {
+            const existingProject = records[index];
+            const nextCode = String(body.code || "").trim().toUpperCase();
+            if (existingProject.code && existingProject.code !== nextCode) {
+              const financialReferences = await Promise.all([readIncomeEvents(directories), readContractorPayments(directories), readFinancialRates(directories)]);
+              const usedByFinancial = financialReferences.some(function(collection) { return collection.some(function(item) { return item.projectId === existingProject.id; }); });
+              if (usedByFinancial) { sendJson(response, 422, { error: "Код проекта используется финансовыми операциями", fields: { code: "Код уже связан с финансовыми операциями и доступен только для просмотра" } }); return; }
+            }
+          }
           const errors = validateReference(directory, body, records, id, directories);
           if (Object.keys(errors).length) {
             sendJson(response, 422, { error: "Проверьте поля справочника", fields: errors });
@@ -1580,6 +1901,7 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
           const existing = records[index];
           const record = normalizeReferenceRecord(directory, Object.assign({}, existing, {
             name: body.name,
+            code: directory === "projects" ? body.code : existing.code,
             value: "",
             providerType: directory === "vendors" ? body.providerType : "",
             vendor: directory === "resources" ? body.vendor : "",

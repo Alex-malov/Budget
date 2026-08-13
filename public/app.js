@@ -2,10 +2,10 @@
   "use strict";
 
   const state = {
-    snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
+    snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, incomeEvents: [], contractorPayments: [], financialRates: [], activeTab: 0,
     year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false, otherSubcontractContextInitialized: false,
     expandedSubcontractYears: {}, expandedOtherSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
-    otherSubcontractView: "compact", costPeriod: "year", costSource: "all", costSearch: "", costOnlyDeviations: false,
+    otherSubcontractView: "compact", costPeriod: "year", costSource: "all", costSearch: "", costOnlyDeviations: false, financeContextInitialized: false,
     subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null)
   };
   const app = document.getElementById("app");
@@ -50,9 +50,11 @@
     "Учёт плановых и фактических часов штатных ресурсов.",
     "Состав команды, роли и распределение по проектам.",
     "Роли, контракты, поставщики, ресурсы и прочий подряд бюджетирования.",
-    "Расходы на субподрядные задачи без привлечения специалистов и ресурсов."
+    "Расходы на субподрядные задачи без привлечения специалистов и ресурсов.",
+    "Аналитический контур: доходы, начисления, оплаты и план-факт.",
+    "Плановые и фактические оплаты подрядчикам и их сверка с начислениями."
   ];
-  const referenceDirectoryKeys = ["roles", "projects", "providers", "vendors", "resources", "otherSubcontracts"];
+  const referenceDirectoryKeys = ["roles", "projects", "providers", "vendors", "resources", "otherSubcontracts", "financialRates"];
 
   function escapeHtml(value) {
     return String(value == null ? "" : value)
@@ -118,6 +120,10 @@
       state.year = currentHoursYear();
       state.otherSubcontractContextInitialized = true;
     }
+    if ((state.activeTab === 1 || state.activeTab === 8 || state.activeTab === 9) && !state.financeContextInitialized) {
+      state.year = currentHoursYear();
+      state.financeContextInitialized = true;
+    }
   }
 
   function filterProject(rows) {
@@ -125,12 +131,37 @@
   }
 
   function referenceRecords(directory, includeArchived) {
+    if (directory === "financialRates") return (state.financialRates || []).filter(function(record) { return includeArchived || !record.archived; });
     const source = state.references[directory] && state.references[directory].records || [];
     return source.filter(function(record) { return includeArchived || !record.archived; });
   }
 
   function activeReferenceNames(directory) {
     return referenceRecords(directory).map(function(record) { return record.name; });
+  }
+
+  async function refreshFinancialData() {
+    const response = await fetch("/api/financial");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Не удалось загрузить финансовые данные.");
+    state.incomeEvents = payload.incomes || [];
+    state.contractorPayments = payload.payments || [];
+    state.financialRates = payload.rates || [];
+    state.references.financialRates = { title: "Финансовые ставки", records: state.financialRates };
+  }
+
+  function projectDisplay(project) {
+    if (!project) return "Код не назначен";
+    return project.code ? project.code + " — " + project.name : "Код не назначен — " + project.name;
+  }
+
+  function activeCodedProjects() {
+    return referenceRecords("projects").filter(function(project) { return Boolean(project.code); });
+  }
+
+  function projectCodeByName(name) {
+    const project = referenceRecords("projects", true).find(function(item) { return item.name === name; });
+    return project ? project.code : "";
   }
 
   function providerOptions(selected) {
@@ -143,7 +174,8 @@
     const start = '<option value="">' + escapeHtml(emptyLabel || "Выберите значение") + '</option>';
     const unavailable = selected && !hasSelected ? '<option value="" selected>Архивная запись: выберите активную</option>' : "";
     return start + unavailable + records.map(function(record) {
-      return '<option value="' + escapeHtml(record.name) + '"' + (record.name === selected ? ' selected' : '') + '>' + escapeHtml(record.name) + '</option>';
+      const label = directory === "projects" ? projectDisplay(record) : record.name;
+      return '<option value="' + escapeHtml(record.name) + '"' + (record.name === selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
     }).join("");
   }
 
@@ -851,24 +883,340 @@
       }) + '</section>';
   }
 
+  function financialRecordsForContext(records) {
+    return (records || []).filter(function(record) {
+      return !record.archived && (state.year === "all" || record.period.indexOf(String(state.year) + "-") === 0) && (state.project === "all" || record.project === state.project);
+    });
+  }
+
+  function incomeScenarioSummary(records, scenario) {
+    const filtered = (records || []).filter(function(record) { return record.scenario === scenario; });
+    return filtered.reduce(function(total, record) {
+      total.gross += num(record.gross);
+      total.vat += num(record.vat);
+      total.net += num(record.net);
+      total.count += 1;
+      return total;
+    }, { gross: 0, vat: 0, net: 0, count: 0 });
+  }
+
+  function financeDeviation(plan, fact) {
+    const delta = num(fact) - num(plan);
+    return { value: delta, rate: num(plan) ? delta / num(plan) : null };
+  }
+
+  function incomeScenarioCell(records, scenario, label, projectId, period) {
+    const relevant = (records || []).filter(function(record) { return record.scenario === scenario; });
+    const values = incomeScenarioSummary(relevant, scenario);
+    const comments = relevant.filter(function(record) { return record.comment; }).length;
+    const action = relevant.length ? '<button class="income-cell-trigger" type="button" data-income-detail="' + escapeHtml(projectId || "all") + '" data-income-scenario="' + scenario + '" data-income-period="' + escapeHtml(period || "") + '" aria-label="Открыть события: ' + label + '">' + money(values.gross) + '</button>' : "—";
+    return '<td class="income-financial-cell ' + scenario + '"><strong>' + action + '</strong><span>НДС ' + (relevant.length ? money(values.vat) : "—") + ' · ×' + values.count + (comments ? " · 💬" : "") + '</span></td>';
+  }
+
+  function incomeTable(records) {
+    const projects = Array.from(new Set(records.map(function(record) { return record.projectId; }))).map(function(id) {
+      const project = referenceRecords("projects", true).find(function(item) { return item.id === id; });
+      const projectRecords = records.filter(function(record) { return record.projectId === id; });
+      return { id: id, project: project, records: projectRecords };
+    }).sort(function(left, right) { return projectDisplay(left.project).localeCompare(projectDisplay(right.project), "ru-RU"); });
+    const totalPlan = incomeScenarioSummary(records, "plan");
+    const totalFact = incomeScenarioSummary(records, "fact");
+    const totalDelta = financeDeviation(totalPlan.gross, totalFact.gross);
+    const totalRow = '<tr class="income-total-row"><td><strong>Итого по фильтру</strong></td>' + incomeScenarioCell(records, "plan", "План") + incomeScenarioCell(records, "fact", "Факт") + '<td class="income-deviation ' + (totalDelta.value > 0 ? "positive" : (totalDelta.value < 0 ? "negative" : "")) + '"><strong>' + (totalDelta.value > 0 ? "+" : "") + money(totalDelta.value) + '</strong><span>' + percent(totalDelta.rate) + '</span></td></tr>';
+    const rows = projects.map(function(item) {
+      const plan = incomeScenarioSummary(item.records, "plan");
+      const fact = incomeScenarioSummary(item.records, "fact");
+      const delta = financeDeviation(plan.gross, fact.gross);
+      const expanded = Boolean(state.expandedIncomeProjects && state.expandedIncomeProjects[item.id]);
+      const months = Array.from(new Set(item.records.map(function(record) { return record.period; }))).sort();
+      const parent = '<tr><td><button class="year-expand-button income-project-expand" data-income-project-expand="' + escapeHtml(item.id) + '" type="button" aria-expanded="' + expanded + '">' + escapeHtml(projectDisplay(item.project)) + '<span>' + (expanded ? "Свернуть" : "По месяцам") + '</span></button></td>' + incomeScenarioCell(item.records, "plan", "План", item.id) + incomeScenarioCell(item.records, "fact", "Факт", item.id) + '<td class="income-deviation ' + (delta.value > 0 ? "positive" : (delta.value < 0 ? "negative" : "")) + '"><strong>' + (delta.value > 0 ? "+" : "") + money(delta.value) + '</strong><span>' + percent(delta.rate) + '</span></td></tr>';
+      const details = expanded ? months.map(function(period) {
+        const monthRecords = item.records.filter(function(record) { return record.period === period; });
+        const monthPlan = incomeScenarioSummary(monthRecords, "plan");
+        const monthFact = incomeScenarioSummary(monthRecords, "fact");
+        const monthDelta = financeDeviation(monthPlan.gross, monthFact.gross);
+        return '<tr class="income-month-row"><td>' + escapeHtml(monthName(period)) + '</td>' + incomeScenarioCell(monthRecords, "plan", "План", item.id, period) + incomeScenarioCell(monthRecords, "fact", "Факт", item.id, period) + '<td class="income-deviation ' + (monthDelta.value > 0 ? "positive" : (monthDelta.value < 0 ? "negative" : "")) + '"><strong>' + (monthDelta.value > 0 ? "+" : "") + money(monthDelta.value) + '</strong><span>' + percent(monthDelta.rate) + '</span></td></tr>';
+      }).join("") : "";
+      return parent + details;
+    }).join("");
+    return '<div class="table-wrap income-table-wrap"><table class="income-table"><thead><tr><th>Проект / период</th><th>План</th><th>Факт</th><th>Отклонение</th></tr></thead><tbody>' + totalRow + (rows || '<tr><td colspan="4">' + empty("Первичные события поступлений не найдены. Создайте план или факт.") + '</td></tr>') + '</tbody></table></div>';
+  }
+
   function renderIncome() {
-    const records = currentCashRecords();
-    const series = cashSeries();
-    const total = sum(records, "visibleTotal");
-    const projects = new Set(records.map(function(item) { return item.project; })).size;
-    return '<section class="metric-grid compact">' +
-      card("Поступления", money(total, true), state.year === "all" ? "за все доступные периоды" : "за " + state.year + " год", "blue") +
-      card("Проекты", integer(projects), "с ненулевыми поступлениями", "violet") +
-      card("Контракты / этапы", integer(records.length), "строки исходной модели", "cyan") +
-      '</section>' +
-      '<section class="grid two"><article class="panel">' + sectionTitle("Распределение поступлений", "Период определяется датами исходной книги.", "руб.") +
-      (series.length ? barChart(series, "amount", "period", function(value) { return money(value, true); }, "cash-bars") : empty("Нет поступлений для выбранного фильтра.")) +
-      '</article><article class="panel insight-panel">' + sectionTitle("Как читать страницу", "Экран соответствует вкладке «Доходы» новой книги.") +
-      '<p>Каждая строка — договорной период проекта. В таблице отражается сумма только за выбранный год; выбор «Все годы» показывает общий итог.</p><p class="muted">НДС и служебные строки исключены: отображаются только строки «Всего» по проектам.</p></article></section>' +
-      '<section class="panel">' + sectionTitle("Доходы по проектам и договорным периодам", "Нажмите фильтр проекта, чтобы сузить срез.") +
-      table(["Проект", "Период ГК", "Поступления", "Активные месяцы"], records, function(record) {
-        return '<tr><td><strong>' + escapeHtml(record.project) + '</strong></td><td>' + escapeHtml(record.contractPeriod || "—") + '</td><td>' + money(record.visibleTotal) + '</td><td>' + record.visibleMonthly.map(function(item) { return '<span class="month-chip">' + monthName(item.period) + '</span>'; }).join("") + '</td></tr>';
-      }) + '</section>';
+    const records = financialRecordsForContext(state.incomeEvents);
+    const plan = incomeScenarioSummary(records, "plan");
+    const fact = incomeScenarioSummary(records, "fact");
+    const delta = financeDeviation(plan.gross, fact.gross);
+    const projects = new Set(records.map(function(record) { return record.projectId; })).size;
+    return '<section class="metric-grid compact financial-income-metrics">' +
+      card("Поступления · план", money(plan.gross, true), "с НДС · " + plan.count + " событий", "blue") +
+      card("Поступления · факт", money(fact.gross, true), "с НДС · " + fact.count + " событий", "violet") +
+      card("Отклонение", (delta.value > 0 ? "+" : "") + money(delta.value, true), percent(delta.rate) + " · " + projects + " проектов", delta.value < 0 ? "red" : "green") +
+      '</section><section class="panel income-register">' + sectionTitle("Доходы", "Первичные события поступлений. План и факт независимы; каждое событие хранит собственную ставку НДС и комментарий.", state.year === "all" ? "все годы" : state.year) +
+      '<div class="table-toolbar"><span class="table-edit-hint">Сумма указана с НДС. НДС = Поступление с НДС × ставка / (100 + ставка). Нажмите значение, чтобы увидеть события и комментарии.</span><button id="add-income-event" class="primary-button" type="button">+ Поступление</button></div>' + incomeTable(records) + '</section>';
+  }
+
+  function closeIncomeModal() {
+    const modal = document.getElementById("income-modal");
+    if (modal) modal.remove();
+  }
+
+  function incomeProjectOptions(selected) {
+    return '<option value="">Выберите проект</option>' + activeCodedProjects().map(function(project) {
+      return '<option value="' + escapeHtml(project.id) + '"' + (project.id === selected ? " selected" : "") + '>' + escapeHtml(projectDisplay(project)) + '</option>';
+    }).join("");
+  }
+
+  function vatRateOptions(selected) {
+    return [0, 5, 7, 10, 22].map(function(rate) { return '<option value="' + rate + '"' + (Number(selected) === rate ? " selected" : "") + '>' + rate + '%</option>'; }).join("");
+  }
+
+  function showIncomeModal(record, copyAsFact) {
+    const editing = Boolean(record) && !copyAsFact;
+    const item = Object.assign({ projectId: "", scenario: "plan", period: (state.year === "all" ? currentHoursYear() : state.year) + "-" + String(currentHoursMonth()).padStart(2, "0"), gross: "", vatRate: 22, comment: "" }, record || {});
+    if (copyAsFact) { item.scenario = "fact"; item.id = ""; }
+    const modal = document.createElement("div");
+    modal.id = "income-modal";
+    modal.className = "modal-backdrop";
+    modal.innerHTML = '<section class="modal financial-event-modal" role="dialog" aria-modal="true" aria-labelledby="income-modal-title"><div class="modal-header"><div><p class="eyebrow">Доходы</p><h2 id="income-modal-title">' + (editing ? "Редактировать поступление" : (copyAsFact ? "Создать факт из плана" : "Новое поступление")) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="income-form"><div class="form-grid"><label>Проект <b>*</b><select name="projectId">' + incomeProjectOptions(item.projectId) + '</select><small data-error="projectId"></small></label><label>Сценарий <b>*</b><select name="scenario"><option value="plan"' + (item.scenario === "plan" ? " selected" : "") + '>План</option><option value="fact"' + (item.scenario === "fact" ? " selected" : "") + '>Факт</option></select><small data-error="scenario"></small></label><label>Месяц <b>*</b><input name="period" type="month" value="' + escapeHtml(item.period) + '"><small data-error="period"></small></label><label>Поступление с НДС, ₽ <b>*</b><input name="gross" type="number" min="0" step="0.01" value="' + escapeHtml(item.gross) + '"><small data-error="gross"></small></label><label>Ставка НДС <b>*</b><select name="vatRate">' + vatRateOptions(item.vatRate) + '</select><small data-error="vatRate"></small></label><label>НДС, ₽<input name="vat" class="calculated-field" type="text" readonly></label><label class="form-span-two">Комментарий<textarea name="comment" rows="3" placeholder="Необязательно">' + escapeHtml(item.comment) + '</textarea><small data-error="comment"></small></label></div><p class="form-note" data-income-formula></p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
+    document.body.appendChild(modal);
+    const close = closeIncomeModal;
+    modal.querySelector(".close-button").addEventListener("click", close);
+    modal.querySelector("[data-close]").addEventListener("click", close);
+    modal.addEventListener("click", function(event) { if (event.target === modal) close(); });
+    const form = modal.querySelector("form");
+    const showFormula = function() {
+      const gross = num(form.elements.gross.value); const rate = num(form.elements.vatRate.value); const vat = gross * rate / (100 + rate);
+      form.elements.vat.value = money(vat);
+      form.querySelector("[data-income-formula]").textContent = "НДС = " + money(gross) + " × " + rate + " / " + (100 + rate) + " = " + money(vat) + "; поступление без НДС = " + money(gross - vat) + ".";
+    };
+    form.elements.gross.addEventListener("input", showFormula); form.elements.vatRate.addEventListener("change", showFormula); showFormula();
+    form.addEventListener("submit", async function(event) {
+      event.preventDefault(); ["projectId", "scenario", "period", "gross", "vatRate", "comment"].forEach(function(field) { formError(field, ""); });
+      const body = Object.fromEntries(new FormData(form).entries()); body.gross = Number(body.gross); body.vatRate = Number(body.vatRate);
+      try {
+        const response = await fetch(editing ? "/api/financial/incomes/" + encodeURIComponent(record.id) : "/api/financial/incomes", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const payload = await response.json();
+        if (!response.ok) { Object.keys(payload.fields || {}).forEach(function(field) { formError(field, payload.fields[field]); }); if (!payload.fields) throw new Error(payload.error || "Не удалось сохранить поступление."); return; }
+        await refreshFinancialData(); close(); render();
+      } catch (error) { formError("gross", error.message || "Не удалось сохранить поступление."); }
+    });
+    form.elements.projectId.focus();
+  }
+
+  function showIncomeDetail(projectId, scenario, period, trigger) {
+    const records = financialRecordsForContext(state.incomeEvents).filter(function(record) { return (projectId === "all" || record.projectId === projectId) && record.scenario === scenario && (!period || record.period === period); });
+    const modal = document.createElement("div"); modal.id = "income-detail"; modal.className = "cost-detail-backdrop"; modal._returnFocus = trigger;
+    modal.innerHTML = '<aside class="cost-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="income-detail-title"><div class="modal-header"><div><p class="eyebrow">Доходы · ' + (scenario === "plan" ? "План" : "Факт") + '</p><h2 id="income-detail-title">События поступлений</h2></div><button class="close-button" data-income-detail-close type="button" aria-label="Закрыть">×</button></div><div class="cost-detail-content">' + (records.length ? '<div class="table-wrap"><table><thead><tr><th>Проект</th><th>Месяц</th><th>С НДС</th><th>НДС</th><th>Комментарий</th><th></th></tr></thead><tbody>' + records.map(function(record) { return '<tr><td>' + escapeHtml(record.projectCode + " — " + record.project) + '</td><td>' + escapeHtml(monthName(record.period)) + '</td><td>' + money(record.gross) + '</td><td>' + money(record.vat) + '</td><td>' + escapeHtml(record.comment || "—") + '</td><td><button class="edit-button" data-income-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-income-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + (record.scenario === "plan" ? '<button class="secondary-button compact-button" data-income-copy="' + escapeHtml(record.id) + '" type="button">Создать факт</button>' : "") + '</td></tr>'; }).join("") + '</tbody></table></div>' : empty("Событий этого сценария нет.")) + '</div></aside>';
+    document.body.appendChild(modal);
+    const close = function() { const restore = modal._returnFocus; modal.remove(); if (restore && document.body.contains(restore)) restore.focus(); };
+    modal.querySelector("[data-income-detail-close]").addEventListener("click", close); modal.addEventListener("click", function(event) { if (event.target === modal) close(); });
+    modal.querySelectorAll("[data-income-edit]").forEach(function(button) { button.addEventListener("click", function() { close(); const item = state.incomeEvents.find(function(record) { return record.id === button.dataset.incomeEdit; }); if (item) showIncomeModal(item); }); });
+    modal.querySelectorAll("[data-income-copy]").forEach(function(button) { button.addEventListener("click", function() { close(); const item = state.incomeEvents.find(function(record) { return record.id === button.dataset.incomeCopy; }); if (item) showIncomeModal(item, true); }); });
+    modal.querySelectorAll("[data-income-delete]").forEach(function(button) { button.addEventListener("click", async function() { if (!window.confirm("Удалить поступление?")) return; const response = await fetch("/api/financial/incomes/" + encodeURIComponent(button.dataset.incomeDelete), { method: "DELETE" }); if (!response.ok) { window.alert("Не удалось удалить поступление."); return; } await refreshFinancialData(); close(); render(); }); });
+    const escape = function(event) { if (event.key === "Escape") { close(); document.removeEventListener("keydown", escape); } }; document.addEventListener("keydown", escape); modal.querySelector("[data-income-detail-close]").focus();
+  }
+
+  function bindIncomeControls() {
+    const add = document.getElementById("add-income-event"); if (add) add.addEventListener("click", function() { showIncomeModal(null); });
+    document.querySelectorAll("[data-income-project-expand]").forEach(function(button) { button.addEventListener("click", function() { state.expandedIncomeProjects = {}; state.expandedIncomeProjects[button.dataset.incomeProjectExpand] = button.getAttribute("aria-expanded") !== "true"; render(); }); });
+    document.querySelectorAll("[data-income-detail]").forEach(function(button) { button.addEventListener("click", function() { showIncomeDetail(button.dataset.incomeDetail, button.dataset.incomeScenario, button.dataset.incomePeriod, button); }); });
+  }
+
+  function paymentRecordsForContext() {
+    return financialRecordsForContext(state.contractorPayments);
+  }
+
+  function paymentSummary(records, scenario) {
+    return (records || []).filter(function(record) { return record.scenario === scenario; }).reduce(function(result, record) {
+      result.gross += num(record.gross);
+      result.vat += num(record.vat);
+      result.allocated += (record.allocations || []).reduce(function(total, item) { return total + num(item.amount); }, 0);
+      result.count += 1;
+      return result;
+    }, { gross: 0, vat: 0, allocated: 0, count: 0 });
+  }
+
+  function paymentContractorOptions(source, selected) {
+    const records = source === "other" ? referenceRecords("otherSubcontracts") : referenceRecords("vendors").filter(function(item) { return item.providerType === "Подряд"; });
+    return '<option value="">Выберите подрядчика</option>' + records.map(function(record) { return '<option value="' + escapeHtml(record.name) + '"' + (record.name === selected ? " selected" : "") + '>' + escapeHtml(record.name) + '</option>'; }).join("");
+  }
+
+  function paymentAllocationRows(allocations) {
+    const values = allocations && allocations.length ? allocations : [{ accrualKey: "", amount: "" }];
+    return '<div class="payment-allocation-list" data-payment-allocations>' + values.map(function(item) {
+      return '<div class="payment-allocation-row"><input data-allocation-key placeholder="Начисление / период" value="' + escapeHtml(item.accrualKey) + '"><input data-allocation-amount type="number" min="0" step="0.01" placeholder="Сумма, ₽" value="' + escapeHtml(item.amount) + '"><button class="secondary-button compact-button" type="button" data-remove-allocation aria-label="Удалить распределение">×</button></div>';
+    }).join("") + '</div><button class="text-button" type="button" data-add-allocation>+ Добавить распределение</button><small data-error="allocations"></small>';
+  }
+
+  function paymentAllocationValue(record) {
+    return (record.allocations || []).reduce(function(total, item) { return total + num(item.amount); }, 0);
+  }
+
+  function paymentStatusMarkup(record) {
+    const rest = num(record.gross) - paymentAllocationValue(record);
+    if (rest > 0.005) return '<span class="comparison-status amber">Аванс ' + money(rest) + '</span>';
+    return '<span class="comparison-status green">Распределено</span>';
+  }
+
+  function paymentsTable(records) {
+    const rows = records.slice().sort(function(left, right) { return (right.period + right.id).localeCompare(left.period + left.id); });
+    return '<div class="table-wrap payments-table-wrap"><table class="payments-table"><thead><tr><th>Проект</th><th>Вид</th><th>Источник</th><th>Подрядчик</th><th>Месяц оплаты</th><th>Оплачено с НДС</th><th>НДС</th><th>Распределение</th><th>Статус</th><th></th></tr></thead><tbody>' + (rows.length ? rows.map(function(record) {
+      return '<tr><td><strong>' + escapeHtml(record.projectCode + " — " + record.project) + '</strong></td><td>' + (record.scenario === "plan" ? "План оплаты" : "Факт оплаты") + '</td><td>' + (record.source === "other" ? "Прочий подряд" : "Ресурсный подряд") + '</td><td>' + escapeHtml(record.contractor) + '</td><td>' + escapeHtml(monthName(record.period)) + '</td><td>' + money(record.gross) + '</td><td>' + money(record.vat) + '</td><td>' + money(paymentAllocationValue(record)) + '</td><td>' + paymentStatusMarkup(record) + '</td><td><button class="edit-button" data-payment-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-payment-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button></td></tr>';
+    }).join("") : '<tr><td colspan="10">' + empty("Плановые и фактические оплаты не заведены.") + '</td></tr>') + '</tbody></table></div>';
+  }
+
+  function paymentReconciliation(records) {
+    const scenarios = ["plan", "fact"].map(function(scenario) { return { scenario: scenario, values: paymentSummary(records, scenario) }; });
+    return '<section class="panel payment-reconciliation">' + sectionTitle("Сверка оплат", "Оплата участвует только в денежном потоке. Нераспределённая часть является авансом; это неблокирующее расхождение.", state.year === "all" ? "все годы" : state.year) + '<div class="payment-reconciliation-grid">' + scenarios.map(function(item) {
+      const advance = item.values.gross - item.values.allocated;
+      return '<article><span>' + (item.scenario === "plan" ? "План оплат" : "Факт оплат") + '</span><strong>' + money(item.values.gross) + '</strong><small>Распределено ' + money(item.values.allocated) + ' · ' + (advance > 0.005 ? "аванс " + money(advance) : "сверено") + '</small></article>';
+    }).join("") + '</div><p class="table-note">Баланс начисления ведётся накопительно при распределении оплат. Частичная оплата и оплата до начисления сохраняются; распределение больше суммы оплаты блокируется на форме.</p></section>';
+  }
+
+  function renderPayments() {
+    const records = paymentRecordsForContext();
+    const plan = paymentSummary(records, "plan"); const fact = paymentSummary(records, "fact");
+    return '<section class="metric-grid compact financial-income-metrics">' + card("Плановые оплаты", money(plan.gross, true), plan.count + " событий", "blue") + card("Фактические оплаты", money(fact.gross, true), fact.count + " событий", "violet") + card("Нераспределено", money((plan.gross - plan.allocated) + (fact.gross - fact.allocated), true), "авансы и будущие распределения", "amber") + '</section>' + paymentReconciliation(records) + '<section class="panel payments-register">' + sectionTitle("Оплаты подрядчикам", "Месяц оплаты — самостоятельное измерение денежного потока и не изменяет начисления в месяце работ.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><span class="table-edit-hint">Одна оплата может содержать несколько распределений. Сумма распределений не может быть больше суммы оплаты.</span><button id="add-payment" class="primary-button" type="button">+ Оплата</button></div>' + paymentsTable(records) + '</section>';
+  }
+
+  function financialRate(type, projectId) {
+    const year = state.year === "all" ? null : Number(state.year);
+    if (!year) return null;
+    const active = referenceRecords("financialRates");
+    const exact = active.find(function(item) { return item.type === type && Number(item.year) === year && String(item.projectId || "") === String(projectId || ""); });
+    if (exact) return num(exact.rate) / 100;
+    if (projectId && type !== "directorate") {
+      const global = active.find(function(item) { return item.type === type && Number(item.year) === year && !item.projectId; });
+      return global ? num(global.rate) / 100 : null;
+    }
+    return null;
+  }
+
+  function financialIncome(scenario) {
+    return financialRecordsForContext(state.incomeEvents).filter(function(record) { return record.scenario === scenario; }).reduce(function(result, record) {
+      result.gross += num(record.gross); result.vat += num(record.vat); result.net += num(record.net); result.count += 1;
+      return result;
+    }, { gross: 0, vat: 0, net: 0, count: 0 });
+  }
+
+  function financialPayments(scenario) {
+    return paymentRecordsForContext().filter(function(record) { return record.scenario === scenario; }).reduce(function(total, record) { return total + num(record.gross); }, 0);
+  }
+
+  function financialSummary(scenario) {
+    const income = financialIncome(scenario);
+    const costs = projectCostRows();
+    const values = costs.total[scenario];
+    const staffGroup = costs.sources.find(function(group) { return group.parent.source === "Штат"; });
+    const otherGroup = costs.sources.find(function(group) { return group.parent.source === "Прочий подряд"; });
+    const staffAttraction = num(staffGroup && staffGroup.parent[scenario].attraction);
+    const otherGross = num(otherGroup && otherGroup.parent[scenario].total);
+    const expensesGross = num(values.total) - staffAttraction;
+    const expensesVat = num(values.vat);
+    const grossProfit = income.gross - expensesGross;
+    const vatTotal = income.vat - expensesVat;
+    const beforeTax = grossProfit - vatTotal;
+    const projectRecord = state.project === "all" ? null : referenceRecords("projects", true).find(function(item) { return item.name === state.project; });
+    const profitTaxRate = financialRate("profitTax", projectRecord && projectRecord.id);
+    const investmentRate = financialRate("investment", projectRecord && projectRecord.id);
+    const overdraftRate = financialRate("overdraft", projectRecord && projectRecord.id);
+    const directorateRate = projectRecord ? financialRate("directorate", projectRecord.id) : null;
+    const profitTax = profitTaxRate == null ? null : Math.max(0, beforeTax) * profitTaxRate;
+    const cleanProfit = profitTax == null ? null : beforeTax - profitTax;
+    const investment = investmentRate == null ? null : Math.max(0, income.gross - otherGross) * investmentRate;
+    const directorate = directorateRate == null ? null : Math.max(0, income.gross - otherGross - (investment || 0)) * directorateRate;
+    const ltDistribution = staffAttraction;
+    const paid = financialPayments(scenario);
+    const overdraft = overdraftRate == null ? null : Math.max(0, paid - income.gross) * overdraftRate;
+    const dks = [cleanProfit, investment, directorate, ltDistribution, overdraft].some(function(value) { return value == null; }) ? null : cleanProfit - investment - directorate - ltDistribution - overdraft;
+    return { income: income, expensesGross: expensesGross, expensesVat: expensesVat, grossProfit: grossProfit, vatTotal: vatTotal, beforeTax: beforeTax, profitTax: profitTax, cleanProfit: cleanProfit, profitability: income.net ? cleanProfit / income.net : null, taxBurden: income.gross ? ((vatTotal || 0) + (profitTax || 0)) / income.gross : null, investment: investment, directorate: directorate, ltDistribution: ltDistribution, paid: paid, overdraft: overdraft, dks: dks, rates: { profitTax: profitTaxRate, investment: investmentRate, overdraft: overdraftRate, directorate: directorateRate } };
+  }
+
+  function financeResult(value) { return value == null || !Number.isFinite(value) ? "Не рассчитано" : money(value); }
+
+  function financeKpi(label, key, plan, fact, caption) {
+    const planValue = key === "income" ? plan.income.gross : plan[key]; const factValue = key === "income" ? fact.income.gross : fact[key];
+    const numeric = factValue != null && Number.isFinite(factValue) ? factValue : null;
+    const delta = numeric == null || planValue == null ? null : numeric - planValue;
+    return '<button class="finance-kpi" data-finance-formula="' + escapeHtml(key) + '" type="button"><span>' + escapeHtml(label) + '</span><strong>' + financeResult(factValue) + '</strong><small>План ' + financeResult(planValue) + (delta == null ? "" : " · Δ " + (delta > 0 ? "+" : "") + money(delta)) + '</small><em>' + escapeHtml(caption) + '</em></button>';
+  }
+
+  function financialFormulaText(key) {
+    const formulas = {
+      income: "Доход с НДС — сумма событий поступлений выбранного сценария за отфильтрованные проект и год.",
+      expensesGross: "Расходы с НДС — прочий подряд + подрядные ресурсы + стоимость штатных ресурсов. «Привлечение» штатных ресурсов в расход не включается.",
+      grossProfit: "Валовая прибыль = доход с НДС − расходы с НДС.",
+      vatTotal: "Итого НДС = НДС с поступлений − НДС по расходам.",
+      beforeTax: "Прибыль до налога = валовая прибыль − итоговый НДС.",
+      profitTax: "Налог на прибыль = max(0; прибыль до налога) × ставка налога на прибыль из НСИ.",
+      cleanProfit: "Чистая прибыль = прибыль до налога − налог на прибыль.",
+      investment: "Инвестиции = (доход с НДС − прочий подряд с НДС) × ставка инвестиций из НСИ.",
+      directorate: "Дирекция = (доход с НДС − прочий подряд − инвестиции) × проектная ставка дирекции из НСИ.",
+      ltDistribution: "Распределение ЛТ — сумма «Привлечение» штатных ресурсов × плановые либо фактические часы; это распределение, а не расход.",
+      paid: "Оплаты подрядчикам — самостоятельные плановые либо фактические денежные события. Они не добавляются к расходам повторно.",
+      overdraft: "Стоимость овердрафта = max(0; оплаты − поступления) × годовая ставка овердрафта из НСИ.",
+      dks: "Остаток ДКС = чистая прибыль − инвестиции − дирекция − распределение ЛТ − стоимость овердрафта."
+    };
+    return formulas[key] || "Расчётный показатель финансового контура.";
+  }
+
+  function showFinancialFormulaModal(key, trigger) {
+    const plan = financialSummary("plan"); const fact = financialSummary("fact");
+    const modal = document.createElement("div"); modal.className = "modal-backdrop";
+    modal.innerHTML = '<section class="modal financial-formula-modal" role="dialog" aria-modal="true" aria-labelledby="financial-formula-title"><div class="modal-header"><div><p class="eyebrow">Формула и источник</p><h2 id="financial-formula-title">' + escapeHtml(key === "income" ? "Доход с НДС" : key) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><p>' + escapeHtml(financialFormulaText(key)) + '</p><div class="formula-comparison"><div><span>План</span><strong>' + financeResult(key === "income" ? plan.income.gross : plan[key]) + '</strong></div><div><span>Факт</span><strong>' + financeResult(key === "income" ? fact.income.gross : fact[key]) + '</strong></div></div><p class="form-note">Источник: регистры поступлений, оплат, проектных расходов и финансовых ставок НСИ. Ставки и НДС фиксируются в самих операциях.</p><div class="form-actions"><button class="primary-button" data-close type="button">Закрыть</button></div></section>';
+    document.body.appendChild(modal);
+    const close = function() { modal.remove(); if (trigger) trigger.focus(); };
+    modal.querySelector(".close-button").addEventListener("click", close); modal.querySelector("[data-close]").addEventListener("click", close); modal.addEventListener("click", function(event) { if (event.target === modal) close(); }); modal.querySelector(".close-button").focus();
+  }
+
+  function renderFinancialPlanFact() {
+    const plan = financialSummary("plan"); const fact = financialSummary("fact");
+    const ratesCaption = state.year === "all" ? "Для расчёта выберите один год" : "Ставки берутся из НСИ «Финансовые ставки»";
+    const cards = [
+      ["Доход с НДС", "income", plan, fact, plan.income.count + " плановых / " + fact.income.count + " фактических событий"],
+      ["Расходы с НДС", "expensesGross", plan, fact, "начисления без повторного учёта оплат"],
+      ["Валовая прибыль", "grossProfit", plan, fact, "до налога и распределений"],
+      ["Итого НДС", "vatTotal", plan, fact, "выходной − входной"],
+      ["Прибыль до налога", "beforeTax", plan, fact, ratesCaption],
+      ["Налог на прибыль", "profitTax", plan, fact, ratesCaption],
+      ["Чистая прибыль", "cleanProfit", plan, fact, ratesCaption],
+      ["Инвестиции", "investment", plan, fact, ratesCaption],
+      ["Дирекция", "directorate", plan, fact, state.project === "all" ? "Выберите проект для проектной ставки" : ratesCaption],
+      ["Распределение ЛТ", "ltDistribution", plan, fact, "информер, не расход"],
+      ["Оплаты подрядчикам", "paid", plan, fact, "денежный поток"],
+      ["Остаток ДКС", "dks", plan, fact, ratesCaption]
+    ];
+    const profitability = '<section class="panel financial-ratio-panel">' + sectionTitle("Ключевые коэффициенты", "Показатели строятся только при наличии обязательных ставок и единственного года.", state.year === "all" ? "выберите год" : state.year) + '<div class="financial-ratio-grid"><div><span>Рентабельность</span><strong>' + percent(fact.profitability) + '</strong><small>План ' + percent(plan.profitability) + '</small></div><div><span>Налоговая нагрузка</span><strong>' + percent(fact.taxBurden) + '</strong><small>План ' + percent(plan.taxBurden) + '</small></div><div><span>Стоимость овердрафта</span><strong>' + financeResult(fact.overdraft) + '</strong><small>План ' + financeResult(plan.overdraft) + '</small></div></div></section>';
+    return '<section class="financial-intro panel">' + sectionTitle("Финансовый план‑факт", "Сквозная аналитика: поступления, начисления, оплаты и распределения. Нажмите показатель, чтобы увидеть формулу и источники.", state.project === "all" ? "все проекты" : state.project) + '<p class="table-note">Оплата — денежный поток; начисление — расход. Эти сущности учитываются раздельно, поэтому двойной учёт исключён.</p></section><section class="financial-kpi-grid">' + cards.map(function(item) { return financeKpi(item[0], item[1], item[2], item[3], item[4]); }).join("") + '</section>' + profitability + '<section class="panel financial-comparison-table">' + sectionTitle("Сверка сценариев", "Положительное отклонение по прибыли — улучшение, по расходам — увеличение затрат.", "план / факт") + '<div class="table-wrap"><table><thead><tr><th>Показатель</th><th>План</th><th>Факт</th><th>Отклонение</th></tr></thead><tbody>' + cards.map(function(item) { const key = item[1]; const planValue = key === "income" ? plan.income.gross : plan[key]; const factValue = key === "income" ? fact.income.gross : fact[key]; const delta = planValue == null || factValue == null ? null : factValue - planValue; return '<tr><td>' + escapeHtml(item[0]) + '</td><td>' + financeResult(planValue) + '</td><td>' + financeResult(factValue) + '</td><td>' + (delta == null ? "—" : (delta > 0 ? "+" : "") + money(delta)) + '</td></tr>'; }).join("") + '</tbody></table></div></section>';
+  }
+
+  function bindFinancialPlanFactControls() {
+    document.querySelectorAll("[data-finance-formula]").forEach(function(button) { button.addEventListener("click", function() { showFinancialFormulaModal(button.dataset.financeFormula, button); }); });
+  }
+
+  function closePaymentModal() { const modal = document.getElementById("payment-modal"); if (modal) modal.remove(); }
+
+  function showPaymentModal(record) {
+    const editing = Boolean(record);
+    const item = Object.assign({ projectId: "", scenario: "plan", source: "resource", contractor: "", period: (state.year === "all" ? currentHoursYear() : state.year) + "-" + String(currentHoursMonth()).padStart(2, "0"), gross: "", vatRate: 22, allocations: [], documentDate: "", documentNumber: "", comment: "" }, record || {});
+    const modal = document.createElement("div"); modal.id = "payment-modal"; modal.className = "modal-backdrop";
+    modal.innerHTML = '<section class="modal financial-event-modal" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title"><div class="modal-header"><div><p class="eyebrow">Денежный поток</p><h2 id="payment-modal-title">' + (editing ? "Редактировать оплату" : "Новая оплата подрядчику") + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="payment-form"><div class="form-grid"><label>Проект <b>*</b><select name="projectId">' + incomeProjectOptions(item.projectId) + '</select><small data-error="projectId"></small></label><label>Вид <b>*</b><select name="scenario"><option value="plan"' + (item.scenario === "plan" ? " selected" : "") + '>План оплаты</option><option value="fact"' + (item.scenario === "fact" ? " selected" : "") + '>Факт оплаты</option></select><small data-error="scenario"></small></label><label>Источник <b>*</b><select name="source"><option value="resource"' + (item.source === "resource" ? " selected" : "") + '>Ресурсный подряд</option><option value="other"' + (item.source === "other" ? " selected" : "") + '>Прочий подряд</option></select><small data-error="source"></small></label><label>Подрядчик <b>*</b><select name="contractor">' + paymentContractorOptions(item.source, item.contractor) + '</select><small data-error="contractor"></small></label><label>Месяц оплаты <b>*</b><input name="period" type="month" value="' + escapeHtml(item.period) + '"><small data-error="period"></small></label><label>Оплачено с НДС, ₽ <b>*</b><input name="gross" type="number" min="0" step="0.01" value="' + escapeHtml(item.gross) + '"><small data-error="gross"></small></label><label>Ставка НДС <b>*</b><select name="vatRate">' + vatRateOptions(item.vatRate) + '</select><small data-error="vatRate"></small></label><label>НДС, ₽<input name="vat" class="calculated-field" type="text" readonly></label><label>Дата документа<input name="documentDate" type="date" value="' + escapeHtml(item.documentDate) + '"></label><label>№ документа<input name="documentNumber" value="' + escapeHtml(item.documentNumber) + '"></label><label class="form-span-two">Комментарий<textarea name="comment" rows="2" placeholder="Необязательно">' + escapeHtml(item.comment) + '</textarea></label></div><section class="payment-allocation-section"><div><strong>Распределение по начислениям</strong><span>Можно оставить пустым: остаток будет авансом</span></div>' + paymentAllocationRows(item.allocations) + '</section><p class="form-note" data-payment-formula></p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
+    document.body.appendChild(modal); modal.querySelector(".close-button").addEventListener("click", closePaymentModal); modal.querySelector("[data-close]").addEventListener("click", closePaymentModal); modal.addEventListener("click", function(event) { if (event.target === modal) closePaymentModal(); });
+    const form = modal.querySelector("form");
+    const updateContractors = function() { const value = form.elements.contractor.value; form.elements.contractor.innerHTML = paymentContractorOptions(form.elements.source.value, value); };
+    form.elements.source.addEventListener("change", updateContractors);
+    const updateFormula = function() { const gross = num(form.elements.gross.value); const rate = num(form.elements.vatRate.value); const vat = gross * rate / (100 + rate); form.elements.vat.value = money(vat); form.querySelector("[data-payment-formula]").textContent = "НДС = " + money(gross) + " × " + rate + " / " + (100 + rate) + " = " + money(vat) + ". Оплата участвует в денежном потоке, но не добавляется к расходам повторно."; };
+    form.elements.gross.addEventListener("input", updateFormula); form.elements.vatRate.addEventListener("change", updateFormula); updateFormula();
+    const bindAllocations = function() { form.querySelectorAll("[data-remove-allocation]").forEach(function(button) { button.onclick = function() { const rows = form.querySelectorAll(".payment-allocation-row"); if (rows.length > 1) button.closest(".payment-allocation-row").remove(); else { button.closest(".payment-allocation-row").querySelectorAll("input").forEach(function(input) { input.value = ""; }); } }; }); };
+    form.querySelector("[data-add-allocation]").addEventListener("click", function() { form.querySelector("[data-payment-allocations]").insertAdjacentHTML("beforeend", '<div class="payment-allocation-row"><input data-allocation-key placeholder="Начисление / период"><input data-allocation-amount type="number" min="0" step="0.01" placeholder="Сумма, ₽"><button class="secondary-button compact-button" type="button" data-remove-allocation aria-label="Удалить распределение">×</button></div>'); bindAllocations(); }); bindAllocations();
+    form.addEventListener("submit", async function(event) { event.preventDefault(); ["projectId", "scenario", "source", "contractor", "period", "gross", "vatRate", "allocations"].forEach(function(field) { formError(field, ""); }); const body = Object.fromEntries(new FormData(form).entries()); body.gross = Number(body.gross); body.vatRate = Number(body.vatRate); body.allocations = Array.from(form.querySelectorAll(".payment-allocation-row")).map(function(row) { return { accrualKey: row.querySelector("[data-allocation-key]").value, amount: Number(row.querySelector("[data-allocation-amount]").value || 0) }; }).filter(function(item) { return item.amount > 0; }); try { const response = await fetch(editing ? "/api/financial/payments/" + encodeURIComponent(record.id) : "/api/financial/payments", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) { Object.keys(payload.fields || {}).forEach(function(field) { formError(field, payload.fields[field]); }); if (!payload.fields) throw new Error(payload.error || "Не удалось сохранить оплату."); return; } await refreshFinancialData(); closePaymentModal(); render(); } catch (error) { formError("gross", error.message || "Не удалось сохранить оплату."); } });
+  }
+
+  function bindPaymentControls() {
+    const add = document.getElementById("add-payment"); if (add) add.addEventListener("click", function() { showPaymentModal(null); });
+    document.querySelectorAll("[data-payment-edit]").forEach(function(button) { button.addEventListener("click", function() { const item = state.contractorPayments.find(function(record) { return record.id === button.dataset.paymentEdit; }); if (item) showPaymentModal(item); }); });
+    document.querySelectorAll("[data-payment-delete]").forEach(function(button) { button.addEventListener("click", async function() { if (!window.confirm("Удалить оплату?")) return; const response = await fetch("/api/financial/payments/" + encodeURIComponent(button.dataset.paymentDelete), { method: "DELETE" }); if (!response.ok) { window.alert("Не удалось удалить оплату."); return; } await refreshFinancialData(); render(); }); });
   }
 
   function blankFinancial() {
@@ -1575,11 +1923,12 @@
   }
 
   function updateProjectFilterOptions() {
-    const projects = activeReferenceNames("projects");
+    const projects = referenceRecords("projects");
+    const projectNames = projects.map(function(project) { return project.name; });
     projectFilter.innerHTML = '<option value="all">Все проекты</option>' + projects.map(function(project) {
-      return '<option value="' + escapeHtml(project) + '">' + escapeHtml(project) + '</option>';
+      return '<option value="' + escapeHtml(project.name) + '">' + escapeHtml(projectDisplay(project)) + '</option>';
     }).join("");
-    if (state.project !== "all" && !projects.includes(state.project)) state.project = "all";
+    if (state.project !== "all" && !projectNames.includes(state.project)) state.project = "all";
     projectFilter.value = state.project;
   }
 
@@ -1659,6 +2008,7 @@
     state.staffRecords = staff.records || [];
     state.otherSubcontractRecords = otherSubcontracts.records || [];
     state.references = references.directories || {};
+    await refreshFinancialData();
     buildPlanIndexes();
     updateProjectFilterOptions();
   }
@@ -2115,6 +2465,38 @@
     }
   }
 
+  const financialRateLabels = { profitTax: "Налог на прибыль", investment: "Инвестиции", overdraft: "Овердрафт", directorate: "Дирекция" };
+
+  function financialRatesDirectory() {
+    const records = referenceRecords("financialRates");
+    const rows = records.slice().sort(function(left, right) { return (left.type + left.year + left.project).localeCompare(right.type + right.year + right.project, "ru-RU"); }).map(function(record) {
+      return '<tr><td>' + escapeHtml(financialRateLabels[record.type] || record.type) + '</td><td>' + escapeHtml(record.projectCode ? record.projectCode + " — " + record.project : "Все проекты") + '</td><td>' + escapeHtml(record.year) + '</td><td>' + percent(num(record.rate) / 100) + '</td><td class="reference-actions"><button class="edit-button" data-financial-rate-edit="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-financial-rate-delete="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("financial-rate", record.id, "") + '</td></tr>';
+    }).join("") || '<tr><td colspan="5">' + empty("Ставки ещё не заведены.") + '</td></tr>';
+    return '<article class="panel reference-directory">' + sectionTitle("Финансовые ставки", "Ставки используются в финансовом план‑факте. Ставка «Дирекция» задаётся только для конкретного проекта; остальные допускают общий вариант.", integer(records.length)) + '<div class="table-toolbar"><span class="table-edit-hint">Отсутствующая обязательная ставка выводит «Не рассчитано» — ноль не подставляется.</span><button class="primary-button" id="add-financial-rate" type="button">+ Новая ставка</button></div><div class="table-wrap"><table><thead><tr><th>Показатель</th><th>Проект</th><th>Год</th><th>Ставка</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></article>';
+  }
+
+  function closeFinancialRateModal() { const modal = document.getElementById("financial-rate-modal"); if (modal) modal.remove(); }
+
+  function showFinancialRateModal(record) {
+    const editing = Boolean(record);
+    const item = Object.assign({ type: "profitTax", projectId: "", year: state.year === "all" ? currentHoursYear() : state.year, rate: "" }, record || {});
+    const modal = document.createElement("div"); modal.id = "financial-rate-modal"; modal.className = "modal-backdrop";
+    modal.innerHTML = '<section class="modal financial-event-modal" role="dialog" aria-modal="true" aria-labelledby="financial-rate-title"><div class="modal-header"><div><p class="eyebrow">НСИ</p><h2 id="financial-rate-title">' + (editing ? "Редактировать финансовую ставку" : "Новая финансовая ставка") + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form><div class="form-grid"><label>Показатель <b>*</b><select name="type">' + Object.keys(financialRateLabels).map(function(type) { return '<option value="' + type + '"' + (type === item.type ? " selected" : "") + '>' + financialRateLabels[type] + '</option>'; }).join("") + '</select><small data-error="type"></small></label><label>Проект<select name="projectId"><option value="">Все проекты</option>' + activeCodedProjects().map(function(project) { return '<option value="' + escapeHtml(project.id) + '"' + (project.id === item.projectId ? " selected" : "") + '>' + escapeHtml(projectDisplay(project)) + '</option>'; }).join("") + '</select><small data-error="projectId"></small></label><label>Год <b>*</b><input name="year" type="number" min="2024" max="2100" value="' + escapeHtml(item.year) + '"><small data-error="year"></small></label><label>Ставка, % <b>*</b><input name="rate" type="number" min="0" max="100" step="0.01" value="' + escapeHtml(item.rate) + '"><small data-error="rate"></small></label></div><p class="form-note" data-rate-note></p><div class="form-actions"><button class="secondary-button" data-close type="button">Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
+    document.body.appendChild(modal); const form = modal.querySelector("form");
+    const close = closeFinancialRateModal; modal.querySelector(".close-button").addEventListener("click", close); modal.querySelector("[data-close]").addEventListener("click", close); modal.addEventListener("click", function(event) { if (event.target === modal) close(); });
+    const updateNote = function() { const directorate = form.elements.type.value === "directorate"; form.elements.projectId.required = directorate; form.querySelector("[data-rate-note]").textContent = directorate ? "Для «Дирекции» выберите проект: общая ставка не применяется." : "Для общей ставки оставьте «Все проекты»; проектная ставка приоритетнее общей."; };
+    form.elements.type.addEventListener("change", updateNote); updateNote();
+    form.addEventListener("submit", async function(event) { event.preventDefault(); ["type", "projectId", "year", "rate"].forEach(function(field) { formError(field, ""); }); const body = Object.fromEntries(new FormData(form).entries()); body.year = Number(body.year); body.rate = Number(body.rate); if (body.type === "directorate" && !body.projectId) { formError("projectId", "Выберите проект для ставки дирекции"); return; } try { const response = await fetch(editing ? "/api/financial/rates/" + encodeURIComponent(record.id) : "/api/financial/rates", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) { Object.keys(payload.fields || {}).forEach(function(field) { formError(field, payload.fields[field]); }); if (!payload.fields) throw new Error(payload.error || "Не удалось сохранить ставку."); return; } await refreshFinancialData(); close(); render(); } catch (error) { formError("rate", error.message || "Не удалось сохранить ставку."); } });
+    form.elements.type.focus();
+  }
+
+  async function deleteFinancialRate(record) {
+    if (!window.confirm("Удалить финансовую ставку?")) return;
+    const response = await fetch("/api/financial/rates/" + encodeURIComponent(record.id), { method: "DELETE" });
+    if (!response.ok) { window.alert("Не удалось удалить ставку."); return; }
+    await refreshFinancialData(); render();
+  }
+
   function bindReferenceControls() {
     document.querySelectorAll("[data-reference-page]").forEach(function(button) {
       button.addEventListener("click", function() {
@@ -2143,6 +2525,10 @@
         if (record) restoreReference(button.dataset.referenceRestore, record);
       });
     });
+    const addFinancialRate = document.getElementById("add-financial-rate");
+    if (addFinancialRate) addFinancialRate.addEventListener("click", function() { showFinancialRateModal(null); });
+    document.querySelectorAll("[data-financial-rate-edit]").forEach(function(button) { button.addEventListener("click", function() { const record = referenceRecords("financialRates", true).find(function(item) { return item.id === button.dataset.financialRateEdit; }); if (record) showFinancialRateModal(record); }); });
+    document.querySelectorAll("[data-financial-rate-delete]").forEach(function(button) { button.addEventListener("click", function() { const record = referenceRecords("financialRates", true).find(function(item) { return item.id === button.dataset.financialRateDelete; }); if (record) deleteFinancialRate(record); }); });
   }
 
   function bindSubcontractControls() {
@@ -3130,6 +3516,7 @@
   }
 
   function referenceDirectory(directory) {
+    if (directory === "financialRates") return financialRatesDirectory();
     const details = state.references[directory] || { title: directory, records: [] };
     const active = referenceRecords(directory);
     const archived = referenceRecords(directory, true).filter(function(item) { return item.archived; });
@@ -3175,11 +3562,15 @@
       '</section>';
   }
 
-  const renderers = [renderPipeline, renderIncome, renderCosts, renderSubcontracts, renderStaff, renderTeam, renderReference, renderOtherSubcontracts];
+  const renderers = [renderPipeline, renderIncome, renderCosts, renderSubcontracts, renderStaff, renderTeam, renderReference, renderOtherSubcontracts, renderFinancialPlanFact, renderPayments];
 
   function renderNavigation() {
-    const items = state.snapshot.tabs.map(function(tab, index) { return { tab: tab, index: index, order: index >= 3 ? index + 2 : index + 1 }; });
-    items.splice(3, 0, { tab: "Прочий подряд", index: 7, order: 4 });
+    const tabs = state.snapshot.tabs;
+    const items = [
+      { tab: tabs[0], index: 0 }, { tab: "Доходы", index: 1 }, { tab: "Финансовый план‑факт", index: 8 },
+      { tab: tabs[2], index: 2 }, { tab: "Прочий подряд", index: 7 }, { tab: tabs[3], index: 3 },
+      { tab: "Оплаты подрядчикам", index: 9 }, { tab: tabs[4], index: 4 }, { tab: tabs[5], index: 5 }, { tab: tabs[6], index: 6 }
+    ].map(function(item, index) { item.order = index + 1; return item; });
     nav.innerHTML = items.map(function(item) {
       return '<button class="tab-link ' + (item.index === state.activeTab ? "active" : "") + '" type="button" data-tab="' + item.index + '"><b>' + String(item.order).padStart(2, "0") + '</b><span>' + escapeHtml(item.tab) + '</span></button>';
     }).join("");
@@ -3193,7 +3584,8 @@
     const isReferencePage = state.activeTab === 6;
     const directory = isReferencePage ? selectedReferenceDirectory() : null;
     const referenceTitle = directory && (state.references[directory] && state.references[directory].title || directory);
-    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : (state.activeTab === 7 ? "Прочий подряд" : state.snapshot.tabs[state.activeTab]);
+    const specialTitle = { 7: "Прочий подряд", 8: "Финансовый план‑факт", 9: "Оплаты подрядчикам" };
+    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : (specialTitle[state.activeTab] || state.snapshot.tabs[state.activeTab]);
     pageSubtitle.textContent = isReferencePage ? "Справочники, обеспечивающие единые правила ведения данных. Открыт: «" + referenceTitle + "»." : subtitles[state.activeTab];
     renderNavigation();
     yearFilter.value = state.year;
@@ -3206,6 +3598,9 @@
     if (state.activeTab === 6) bindReferenceControls();
     if (state.activeTab === 7) bindOtherSubcontractControls();
     if (state.activeTab === 2) bindProjectCostControls();
+    if (state.activeTab === 1) bindIncomeControls();
+    if (state.activeTab === 8) bindFinancialPlanFactControls();
+    if (state.activeTab === 9) bindPaymentControls();
     bindInlineEditing();
     bindChangeLogControls();
     setupTableRowNumbering();

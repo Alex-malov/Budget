@@ -583,8 +583,33 @@ th.sortable-header.has-column-help { padding-right: 66px; }
 .drawer-context { margin: 5px 0 0; color: #718092; font-size: 12px; }
 .project-cost-detail-table table { min-width: 530px; }
 
+/* Financial contour: compact plan/fact indicators and transaction forms. */
+.financial-intro { margin-bottom: 14px; }
+.financial-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.finance-kpi { display: flex; min-height: 130px; flex-direction: column; gap: 7px; padding: 16px; border: 1px solid #dce2ea; border-radius: 12px; color: inherit; background: #fff; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(22,35,57,.05); }
+.finance-kpi:hover, .finance-kpi:focus-visible { border-color: #3066d6; outline: none; box-shadow: 0 0 0 3px rgba(48,102,214,.12); }
+.finance-kpi span, .finance-kpi em { color: #5f6c7b; font-size: 12px; font-style: normal; }
+.finance-kpi strong { color: #172b4d; font-size: 21px; }
+.finance-kpi small { color: #3f4d5d; }
+.financial-ratio-grid, .formula-comparison, .payment-reconciliation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.financial-ratio-grid > div, .formula-comparison > div, .payment-reconciliation-grid article { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 10px; background: #f6f8fb; }
+.financial-ratio-grid strong, .formula-comparison strong, .payment-reconciliation-grid strong { color: #172b4d; font-size: 20px; }
+.financial-ratio-grid span, .formula-comparison span, .payment-reconciliation-grid span { color: #5f6c7b; font-size: 12px; }
+.financial-formula-modal { max-width: 620px; }
+.financial-formula-modal > p { color: #425466; line-height: 1.55; }
+.financial-income-metrics, .payment-reconciliation { margin-bottom: 14px; }
+.payments-table-wrap { max-height: 540px; }
+.payment-allocation-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #dce2ea; }
+.payment-allocation-section > div:first-child { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.payment-allocation-section > div:first-child span { color: #637083; font-size: 12px; }
+.payment-allocation-row { display: grid; grid-template-columns: minmax(0,1fr) 160px 36px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.payment-allocation-section .text-button { margin-top: 4px; }
+.comparison-status.amber { color: #9b6400; background: #fff4db; }
+.comparison-status.green { color: #17683c; background: #def5e7; }
+
 @media (max-width: 1100px) {
   .other-subcontract-comparison, .project-cost-overview { grid-template-columns: 1fr; }
+  .financial-kpi-grid { grid-template-columns: repeat(3, minmax(180px, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -613,4 +638,6 @@ th.sortable-header.has-column-help { padding-right: 66px; }
   .project-cost-toolbar .table-filters label { min-width: 0; }
   .cost-detail-backdrop { align-items: flex-end; }
   .cost-detail-drawer { width: 100%; height: min(86vh, 760px); border-top: 1px solid #d1d8e0; border-left: 0; }
+  .financial-kpi-grid, .financial-ratio-grid, .formula-comparison, .payment-reconciliation-grid { grid-template-columns: 1fr; }
+  .payment-allocation-row { grid-template-columns: 1fr; }
 }
