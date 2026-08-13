@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1786633703469-wzgu84",
+      "changedAt": "2026-08-13T15:08:23.469Z",
+      "entity": "other-subcontract",
+      "directory": "",
+      "recordId": "local-other-subcontract-1786633358734",
+      "recordLabel": "local-other-subcontract-1786633358734",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Факт · сумма · 2026 / 1",
+          "before": "0",
+          "after": "4000000"
+        }
+      ]
+    },
+    {
       "id": "change-1786633358784-zil37t",
       "changedAt": "2026-08-13T15:02:38.784Z",
       "entity": "other-subcontract",
