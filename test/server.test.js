@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { buildOverview, createCashSeries, createServer, exchangeNsiExportRows, flattenSubcontracts, validateSubcontract } = require("../server.js");
+const { summary: financialSummary } = require("../public/financial-formulas.js");
 
 const snapshot = {
   finance: {
@@ -241,6 +242,77 @@ test("хранит план и факт прочего подряда по ме�
     const archivedReference = await request("/api/references/otherSubcontracts/" + encodeURIComponent(reference.body.record.id), { method: "DELETE" });
     assert.equal(archivedReference.status, 200);
     assert.equal(archivedReference.body.action, "archived");
+  } finally {
+    await new Promise(function(resolve) { server.close(resolve); });
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("считает контрольный финансовый пример BUD-13 по единому контракту формул", function() {
+  const result = financialSummary({ income: 6100, outputVat: 1100, otherGross: 610, contractorGross: 1464, staffCost: 800, staffAttraction: 200, inputVat: 374, taxRate: 0.05, directorateRate: 0.05, overdraftCost: 0 });
+  assert.equal(result.expenses, 2874);
+  assert.equal(result.profitGross, 3226);
+  assert.equal(result.vatTotal, 726);
+  assert.equal(result.beforeTax, 2500);
+  assert.equal(result.profitTax, 125);
+  assert.equal(result.net, 2375);
+  assert.equal(result.investment, 549);
+  assert.equal(result.directorate, 247.05);
+  assert.equal(result.dks, 1378.95);
+  assert.equal(result.profitability, 0.475);
+  assert.equal(Number(result.taxBurden.toFixed(3)), 0.14);
+});
+
+test("хранит независимые доходы и оплаты с НДС-снимком и контролем распределения", async function() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "planning-financial-"));
+  const snapshotPath = path.join(directory, "snapshot.json");
+  const subcontractPath = path.join(directory, "subcontracts.json");
+  const referencePath = path.join(directory, "references.json");
+  const teamPath = path.join(directory, "team.json");
+  const staffPath = path.join(directory, "staff.json");
+  const changeLogPath = path.join(directory, "change-log.json");
+  const otherPath = path.join(directory, "other-subcontracts.json");
+  const financialPath = path.join(directory, "financial-events.json");
+  await fs.writeFile(snapshotPath, JSON.stringify({
+    finance: { years: [2026], lines: [], operating: {} }, reference: { projects: ["Проект"] }, projects: ["Проект"], cashReceipts: [], staffResources: [], team: { roles: [], roster: [], resourcePlan: [] }, subcontracts: []
+  }), "utf8");
+  const server = createServer(snapshotPath, subcontractPath, referencePath, teamPath, staffPath, changeLogPath, otherPath, financialPath);
+  await new Promise(function(resolve) { server.listen(0, "127.0.0.1", resolve); });
+  const baseUrl = "http://127.0.0.1:" + server.address().port;
+  const request = async function(url, options) {
+    const response = await fetch(baseUrl + url, options);
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const references = await request("/api/references");
+    const project = references.body.directories.projects.records[0];
+    assert.match(project.code, /^PRJ-\d{3}$/);
+    assert.ok(references.body.directories.financialRates.records.length > 0);
+
+    const overlappingRate = await request("/api/references/financialRates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Пересекающаяся ставка", financialKind: "profitTax", project: "", year: "2026", rate: 5 }) });
+    assert.equal(overlappingRate.status, 422);
+    assert.ok(overlappingRate.body.fields.year);
+
+    const income = await request("/api/financial/incomes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectCode: project.code, scenario: "fact", period: "2026-01", gross: 1220, vatRate: 22, comment: "Оплата этапа" }) });
+    assert.equal(income.status, 201);
+    assert.equal(income.body.record.vat, 220);
+    assert.equal(income.body.record.gross - income.body.record.vat, 1000);
+
+    const lockedProject = await request("/api/references/projects/" + encodeURIComponent(project.id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: project.name, code: "PRJ-999" }) });
+    assert.equal(lockedProject.status, 422);
+    assert.ok(lockedProject.body.fields.code);
+
+    const invalidPayment = await request("/api/financial/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectCode: project.code, scenario: "fact", period: "2026-02", gross: 100, vatRate: 22, source: "resource", contractor: "Нет такого", allocations: [] }) });
+    assert.equal(invalidPayment.status, 422);
+    assert.ok(invalidPayment.body.fields.contractor);
+
+    const saved = await request("/api/financial");
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.incomes.length, 1);
+
+    const archived = await request("/api/financial/incomes/" + encodeURIComponent(income.body.record.id), { method: "DELETE" });
+    assert.equal(archived.status, 200);
+    assert.equal(archived.body.record.archived, true);
   } finally {
     await new Promise(function(resolve) { server.close(resolve); });
     await fs.rm(directory, { recursive: true, force: true });

@@ -583,6 +583,35 @@ th.sortable-header.has-column-help { padding-right: 66px; }
 .drawer-context { margin: 5px 0 0; color: #718092; font-size: 12px; }
 .project-cost-detail-table table { min-width: 530px; }
 
+/* BUD-10 / BUD-12: compact financial contour */
+.finance-context-note, .finance-warning, .finance-mode-toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid #d9e1ea; border-radius: 12px; background: #fff; margin-bottom: 16px; }
+.finance-warning { color: #7a4500; background: #fff8e9; border-color: #f2cf87; }
+.finance-mode-toolbar { justify-content: space-between; flex-wrap: wrap; }
+.finance-mode-toolbar > div { display: inline-flex; border: 1px solid #cbd7e3; border-radius: 8px; overflow: hidden; }
+.finance-mode-toolbar button { min-height: 36px; padding: 6px 12px; border: 0; border-right: 1px solid #cbd7e3; background: #fff; color: #26445e; cursor: pointer; }
+.finance-mode-toolbar button:last-child { border-right: 0; }
+.finance-mode-toolbar button.active { background: #164b78; color: #fff; font-weight: 700; }
+.finance-kpi .metric-card strong { font-variant-numeric: tabular-nums; }
+.finance-matrix th { min-width: 280px; }
+.financial-cell { min-width: 210px; text-align: right; vertical-align: top; font-variant-numeric: tabular-nums; position: relative; }
+.financial-cell strong, .financial-cell span, .financial-cell small { display: block; }
+.financial-cell span { color: #61758a; margin-top: 4px; }
+.financial-cell small { margin-top: 4px; color: #45627c; }
+.financial-cell.is-not-calculated strong { color: #a33d2d; }
+.formula-help { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; border: 1px solid #6f859a; border-radius: 50%; background: #fff; color: #164b78; font-weight: 700; cursor: pointer; vertical-align: middle; }
+.formula-help:focus-visible, .finance-mode-toolbar button:focus-visible { outline: 3px solid #5aa7e0; outline-offset: 2px; }
+.formula-popover pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.5 inherit; }
+.event-total strong, .event-total span { display: block; font-variant-numeric: tabular-nums; }
+.event-total span { color: #61758a; font-size: 12px; }
+.finance-event-list { display: grid; gap: 7px; padding: 10px 0 0 18px; }
+.finance-event-list li { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.finance-event-list li span { margin-left: auto; display: inline-flex; gap: 6px; }
+.finance-allocation { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #d9e1ea; }
+.finance-allocation > div > span { display: block; color: #61758a; font-size: 13px; margin-top: 3px; }
+.allocation-row { display: grid; grid-template-columns: minmax(0, 1fr) 160px auto; gap: 8px; align-items: center; }
+.finance-check-list { margin: 0; padding-left: 20px; display: grid; gap: 9px; }
+.finance-context-select select { min-width: 190px; max-width: 350px; }
+
 @media (max-width: 1100px) {
   .other-subcontract-comparison, .project-cost-overview { grid-template-columns: 1fr; }
 }
@@ -613,4 +642,10 @@ th.sortable-header.has-column-help { padding-right: 66px; }
   .project-cost-toolbar .table-filters label { min-width: 0; }
   .cost-detail-backdrop { align-items: flex-end; }
   .cost-detail-drawer { width: 100%; height: min(86vh, 760px); border-top: 1px solid #d1d8e0; border-left: 0; }
+  .finance-mode-toolbar { align-items: flex-start; }
+  .finance-mode-toolbar > div { width: 100%; }
+  .finance-mode-toolbar button { flex: 1; padding: 8px 4px; font-size: 12px; }
+  .financial-cell { min-width: 180px; }
+  .allocation-row { grid-template-columns: 1fr; }
+  .finance-context-select select { min-width: 140px; }
 }

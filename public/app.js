@@ -2,11 +2,12 @@
   "use strict";
 
   const state = {
-    snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, activeTab: 0,
+    snapshot: null, overview: null, subcontracts: [], otherSubcontractRecords: [], staffRecords: [], teamRecords: [], references: {}, financial: { incomes: [], payments: [] }, activeTab: 0,
     year: "all", project: "all", subcontractViewMonth: "all", subcontractVendor: "all", subcontractResource: "all", staffVendor: "all", staffEmployee: "all", staffMonth: "all", teamRole: "all", teamEmployee: "all", referenceDirectory: "roles", subcontractContextInitialized: false, staffContextInitialized: false, otherSubcontractContextInitialized: false,
     expandedSubcontractYears: {}, expandedOtherSubcontractYears: {}, expandedStaffYears: {}, expandedTeamYears: {}, expandedTeamEmployees: {},
     otherSubcontractView: "compact", costPeriod: "year", costSource: "all", costSearch: "", costOnlyDeviations: false,
-    subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null)
+    subcontractPage: 1, subcontractPageSize: 80, tableSorts: Object.create(null), staffPlanIndex: Object.create(null), contractorPlanIndex: Object.create(null), staffTeamIndex: Object.create(null), contractorTeamIndex: Object.create(null),
+    financeYears: [], financeProjects: [], financeContractorMode: "work", financeOtherMode: "work"
   };
   const app = document.getElementById("app");
   const nav = document.getElementById("tab-nav");
@@ -43,8 +44,8 @@
   };
 
   const subtitles = [
-    "Сводная финансовая картина по годам исходной модели.",
-    "Поступления по проектам и периодам контрактов.",
+    "План-факт финансового результата, денежных потоков и распределения.",
+    "Поступления — независимые события Плана и Факта с НДС.",
     "Единая финансовая сводка проектных расходов: прочий подряд, подрядные и штатные ресурсы.",
     "Детализация затрат подрядчиков: план из ресурсного плана и введённый факт.",
     "Учёт плановых и фактических часов штатных ресурсов.",
@@ -52,7 +53,8 @@
     "Роли, контракты, поставщики, ресурсы и прочий подряд бюджетирования.",
     "Расходы на субподрядные задачи без привлечения специалистов и ресурсов."
   ];
-  const referenceDirectoryKeys = ["roles", "projects", "providers", "vendors", "resources", "otherSubcontracts"];
+  const referenceDirectoryKeys = ["roles", "projects", "providers", "vendors", "resources", "otherSubcontracts", "financialRates"];
+  let financialFeature = null;
 
   function escapeHtml(value) {
     return String(value == null ? "" : value)
@@ -104,6 +106,10 @@
   }
 
   function applyHoursContextDefaults() {
+    if (state.activeTab === 2 && state.project === "all") {
+      const firstProject = referenceRecords("projects")[0];
+      if (firstProject) state.project = firstProject.name;
+    }
     if (state.activeTab === 3 && !state.subcontractContextInitialized) {
       state.year = currentHoursYear();
       state.subcontractViewMonth = currentHoursMonth();
@@ -255,9 +261,10 @@
 
   function updateContextControlsVisibility() {
     const nsiOnly = state.activeTab === 6;
+    const financialOnly = state.activeTab === 0 || state.activeTab === 1;
     filterPanel.hidden = nsiOnly;
-    projectFilter.closest("label").hidden = nsiOnly;
-    yearFilter.closest("label").hidden = nsiOnly;
+    projectFilter.closest("label").hidden = nsiOnly || financialOnly;
+    yearFilter.closest("label").hidden = nsiOnly || financialOnly;
     projectFilter.closest(".filters").classList.toggle("staff-context-order", state.activeTab === 4);
     projectFilter.closest(".filters").classList.toggle("subcontract-context-order", state.activeTab === 3);
     document.getElementById("reset-filters").hidden = nsiOnly;
@@ -266,6 +273,11 @@
   function renderContextTabFilters() {
     updateContextControlsVisibility();
     contextTabFilters.innerHTML = "";
+    if ((state.activeTab === 0 || state.activeTab === 1) && financialFeature) {
+      contextTabFilters.innerHTML = financialFeature.contextMarkup();
+      financialFeature.bindContext();
+      return;
+    }
     if (state.activeTab === 3) {
       const context = subcontractContext();
       contextTabFilters.innerHTML = '<label class="subcontract-context-vendor">Поставщик<select id="subcontract-vendor"><option value="all">Все поставщики</option>' +
@@ -823,6 +835,7 @@
   }
 
   function renderPipeline() {
+    if (financialFeature) return financialFeature.renderPlanFact();
     const year = selectedYear(state.overview.latestYear);
     const work = valueFor("Объем работ в т.ч. НДС", year);
     const vat = valueFor("НДС", year);
@@ -852,6 +865,7 @@
   }
 
   function renderIncome() {
+    if (financialFeature) return financialFeature.renderIncome();
     const records = currentCashRecords();
     const series = cashSeries();
     const total = sum(records, "visibleTotal");
@@ -1051,9 +1065,9 @@
 
   function costStatus(plan, fact) {
     if (!plan && !fact) return { label: "Недостаточно данных", tone: "neutral" };
-    if (!plan && fact) return { label: "Расходы без плана", tone: "red" };
-    if (fact > plan) return { label: "Перерасход", tone: "red" };
-    if (fact < plan) return { label: "Экономия", tone: "green" };
+    if (!plan && fact) return { label: "Факт без плана", tone: "neutral" };
+    if (fact > plan) return { label: "Выше плана", tone: "neutral" };
+    if (fact < plan) return { label: "Ниже плана", tone: "neutral" };
     return { label: "По плану", tone: "neutral" };
   }
 
@@ -1105,9 +1119,9 @@
     const rows = model.rows.filter(projectCostRowMatches);
     const body = rows.map(function(row) {
       const details = row.level > 0 ? '<button class="text-button cost-detail-trigger" data-cost-detail="' + escapeHtml(row.id) + '" type="button">Подробнее</button>' : "";
-      return '<tr class="cost-row level-' + row.level + '"><td><span class="cost-hierarchy level-' + row.level + '">' + (row.level === 1 ? "▾" : (row.level === 2 ? "↳" : "Σ")) + '</span><strong>' + escapeHtml(row.name) + '</strong>' + details + '</td><td>' + escapeHtml(row.source) + '</td>' + projectCostCell(row.plan, row.fact, "base") + projectCostCell(row.plan, row.fact, "resourceCost") + projectCostCell(row.plan, row.fact, "attraction") + projectCostCell(row.plan, row.fact, "vat") + projectCostCell(row.plan, row.fact, "total") + '</tr>';
-    }).join("") || '<tr><td colspan="7">' + empty("Нет строк для выбранных локальных фильтров.") + '</td></tr>';
-    return '<div class="table-wrap project-cost-table-wrap"><table class="project-cost-table"><thead><tr><th>Источник / объект</th><th>Источник</th><th>Расходы без НДС</th><th>Себестоимость ресурсов</th><th>Привлечение ресурсов</th><th>НДС</th><th>Расходы с НДС</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+      return '<tr class="cost-row level-' + row.level + '"><td><span class="cost-hierarchy level-' + row.level + '">' + (row.level === 1 ? "▾" : (row.level === 2 ? "↳" : "Σ")) + '</span><strong>' + escapeHtml(row.name) + '</strong>' + details + '</td>' + projectCostCell(row.plan, row.fact, "base") + projectCostCell(row.plan, row.fact, "resourceCost") + projectCostCell(row.plan, row.fact, "attraction") + projectCostCell(row.plan, row.fact, "vat") + projectCostCell(row.plan, row.fact, "total") + '</tr>';
+    }).join("") || '<tr><td colspan="6">' + empty("Нет строк для выбранных локальных фильтров.") + '</td></tr>';
+    return '<div class="table-wrap project-cost-table-wrap"><table class="project-cost-table"><thead><tr><th>Источник / объект</th><th>Расходы без НДС</th><th>Себестоимость ресурсов</th><th>Привлечение ресурсов</th><th>НДС</th><th>Расходы с НДС</th></tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   function renderCosts() {
@@ -1239,9 +1253,10 @@
   }
 
   function renderOtherSubcontracts() {
+    if (financialFeature && state.financeOtherMode !== "work") return financialFeature.renderOtherMode(state.financeOtherMode);
     const years = state.year === "all" ? otherSubcontractYears() : [String(state.year)];
     const records = otherSubcontractRows();
-    return otherSubcontractComparison(records, years) + '<section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показаны годы; в каждом году можно раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><div class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд». Двойной щелчок по помесячной «Сумме» — изменение.</div><div class="view-toggle" role="group" aria-label="Представление финансовых ячеек"><button type="button" data-other-subcontract-view="compact" class="' + (state.otherSubcontractView === "compact" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "compact") + '">Компактно</button><button type="button" data-other-subcontract-view="detail" class="' + (state.otherSubcontractView === "detail" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "detail") + '">Детально</button></div><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
+    return (financialFeature ? financialFeature.otherToolbar() : "") + otherSubcontractComparison(records, years) + '<section class="panel other-subcontract-panel">' + sectionTitle("Прочий подряд", "Расходы на субподрядные задачи, не связанные с привлечением специалистов и ресурсов. По умолчанию показаны годы; в каждом году можно раскрыть месяцы.", state.year === "all" ? "все годы" : state.year) + '<div class="table-toolbar"><div class="table-edit-hint">Стоимость = Сумма + НДС; НДС = Сумма × ставка НДС из НСИ «Прочий подряд». Двойной щелчок по помесячной «Сумме» — изменение.</div><div class="view-toggle" role="group" aria-label="Представление финансовых ячеек"><button type="button" data-other-subcontract-view="compact" class="' + (state.otherSubcontractView === "compact" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "compact") + '">Компактно</button><button type="button" data-other-subcontract-view="detail" class="' + (state.otherSubcontractView === "detail" ? "active" : "") + '" aria-pressed="' + (state.otherSubcontractView === "detail") + '">Детально</button></div><button id="add-other-subcontract" class="primary-button" type="button">+ Новая запись</button></div>' + otherSubcontractTable(records, years) + '</section>';
   }
 
   function otherSubcontractOptions(selected) {
@@ -1323,6 +1338,7 @@
   }
 
   function bindOtherSubcontractControls() {
+    if (financialFeature) financialFeature.bindOtherControls();
     const add = document.getElementById("add-other-subcontract");
     if (add) add.addEventListener("click", function() { showOtherSubcontractModal(null); });
     document.querySelectorAll("[data-other-subcontract-year-expand]").forEach(function(button) {
@@ -1422,6 +1438,7 @@
   }
 
   function renderSubcontracts() {
+    if (financialFeature && state.financeContractorMode !== "work") return financialFeature.renderContractorMode(state.financeContractorMode);
     const allYears = state.year === "all";
     const years = allYears ? teamPlanYears() : [String(state.year)];
     const months = subcontractContextMonths();
@@ -1439,7 +1456,7 @@
     const planTable = allYears ? subcontractAllYearsTable(page.rows, years, months) : subcontractTable(page.rows, years[0], months);
     const periodLabel = allYears ? "за все доступные годы" : "по месяцам " + years[0] + " года";
     const selectedMonthNote = state.subcontractViewMonth === "all" ? "" : " Выбран " + teamMonthLabels[months[0] - 1] + ": отображаются данные только этого месяца" + (allYears ? " в каждом году." : ".");
-    return '<section class="metric-grid compact hours-metric-grid">' +
+    return (financialFeature ? financialFeature.contractorToolbar() : "") + '<section class="metric-grid compact hours-metric-grid">' +
       card("Подрядные затраты", money(amount, true), periodLabel, "amber") +
       card("Часы · план", integer(plannedHours) + " ч", "из вкладки 06 · " + periodLabel, "cyan") +
       card("Часы · факт", integer(actualHours) + " ч", "введено на этой странице", "blue") +
@@ -1577,7 +1594,9 @@
   function updateProjectFilterOptions() {
     const projects = activeReferenceNames("projects");
     projectFilter.innerHTML = '<option value="all">Все проекты</option>' + projects.map(function(project) {
-      return '<option value="' + escapeHtml(project) + '">' + escapeHtml(project) + '</option>';
+      const item = referenceRecords("projects", true).find(function(record) { return record.name === project; });
+      const label = item && item.code ? item.code + " — " + item.name : project;
+      return '<option value="' + escapeHtml(project) + '">' + escapeHtml(label) + '</option>';
     }).join("");
     if (state.project !== "all" && !projects.includes(state.project)) state.project = "all";
     projectFilter.value = state.project;
@@ -1638,7 +1657,8 @@
       fetch("/api/references", { cache: "no-store" }),
       fetch("/api/team", { cache: "no-store" }),
       fetch("/api/staff", { cache: "no-store" }),
-      fetch("/api/other-subcontracts", { cache: "no-store" })
+      fetch("/api/other-subcontracts", { cache: "no-store" }),
+      fetch("/api/financial", { cache: "no-store" })
     ]);
     const model = await responses[0].json();
     const subcontracts = await responses[1].json();
@@ -1646,12 +1666,14 @@
     const team = await responses[3].json();
     const staff = await responses[4].json();
     const otherSubcontracts = await responses[5].json();
+    const financial = await responses[6].json();
     if (!responses[0].ok) throw new Error(model.error || "Не удалось загрузить данные.");
     if (!responses[1].ok) throw new Error(subcontracts.error || "Не удалось загрузить подрядные записи.");
     if (!responses[2].ok) throw new Error(references.error || "Не удалось загрузить справочники.");
     if (!responses[3].ok) throw new Error(team.error || "Не удалось загрузить записи команды.");
     if (!responses[4].ok) throw new Error(staff.error || "Не удалось загрузить штатные записи.");
     if (!responses[5].ok) throw new Error(otherSubcontracts.error || "Не удалось загрузить прочий подряд.");
+    if (!responses[6].ok) throw new Error(financial.error || "Не удалось загрузить финансовые события.");
     state.snapshot = model.snapshot;
     state.overview = model.overview;
     state.subcontracts = subcontracts.records || [];
@@ -1659,6 +1681,7 @@
     state.staffRecords = staff.records || [];
     state.otherSubcontractRecords = otherSubcontracts.records || [];
     state.references = references.directories || {};
+    state.financial = financial || { incomes: [], payments: [] };
     buildPlanIndexes();
     updateProjectFilterOptions();
   }
@@ -1733,7 +1756,7 @@
       if (field === "providerType") return { type: "select", value: record.providerType, options: referenceRecords("providers").map(function(item) { return { value: item.name, label: item.name }; }) };
       if (field === "vendor") return { type: "select", value: record.vendor, options: referenceRecords("vendors").map(function(item) { return { value: item.name, label: item.name }; }) };
       if (field === "category") return { type: "select", value: record.category, options: ["Основные", "Косвенные", "Прочие"].map(function(item) { return { value: item, label: item }; }) };
-      return { type: "text", value: record.name };
+      return { type: "text", value: record[field] == null ? "" : record[field] };
     }
     if (scope === "team") {
       if (field === "employee") return { type: "select", value: record.employee, options: referenceRecords("resources").filter(function(item) { return item.vendor === record.vendor; }).map(function(item) { return { value: item.name, label: item.name }; }) };
@@ -1780,7 +1803,7 @@
     let body = {};
     if (scope === "reference") {
       endpoint = "/api/references/" + cell.dataset.inlineDirectory + "/" + encodeURIComponent(record.id);
-      body = { name: record.name, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: record.archived };
+      body = { name: record.name, code: record.code, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, financialKind: record.financialKind, project: record.project, year: record.year, rate: record.rate, archived: record.archived };
       body[field] = value;
     } else if (scope === "team") {
       endpoint = "/api/team/" + encodeURIComponent(record.id);
@@ -2007,6 +2030,7 @@
     const vendor = directory === "vendors";
     const resource = directory === "resources";
     const otherSubcontract = directory === "otherSubcontracts";
+    const project = directory === "projects";
     const title = state.references[directory] && state.references[directory].title || "Справочник";
     const item = record || { name: "", providerType: "", vatPlan: {}, costPlan: {}, category: "Основные" };
     const modal = document.createElement("div");
@@ -2016,13 +2040,15 @@
       ? '<label>Наименование <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Тип поставщика <b>*</b><select name="providerType">' + referenceOptions("providers", item.providerType, "Выберите тип поставщика") + '</select><small data-error="providerType"></small></label>'
       : (resource
         ? '<label>Сотрудник / ресурс <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Поставщик <b>*</b><select name="vendor">' + referenceOptions("vendors", item.vendor, "Выберите поставщика") + '</select><small data-error="vendor"></small></label>'
-        : (otherSubcontract
+      : (otherSubcontract
           ? '<label>Статья/Подрядчик <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label><label>Категория <b>*</b><select name="category"><option value="Основные"' + (item.category === "Основные" ? " selected" : "") + '>Основные</option><option value="Косвенные"' + (item.category === "Косвенные" ? " selected" : "") + '>Косвенные</option><option value="Прочие"' + (item.category === "Прочие" ? " selected" : "") + '>Прочие</option></select><small data-error="category"></small></label>'
-          : '<label>' + (providerType ? "Тип поставщика" : "Наименование") + ' <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label>'));
-    const note = providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные — затраты на вычислительные мощности, лицензии и т.д.; косвенные — сопутствующие затраты; прочие — навязанный субподряд." : "")));
+          : (project
+            ? '<label>Код <b>*</b><input name="code" value="' + escapeHtml(item.code || "") + '" pattern="[A-Za-z0-9_-]{2,32}" ' + (editing ? "" : "autofocus") + '><small data-error="code"></small></label><label>Наименование <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" ' + (editing ? "autofocus" : "") + '><small data-error="name"></small></label>'
+            : '<label>' + (providerType ? "Тип поставщика" : "Наименование") + ' <b>*</b><input name="name" value="' + escapeHtml(item.name) + '" autofocus><small data-error="name"></small></label>')));
+    const note = providerType ? "Укажите доступный тип: «Штат» или «Подряд»." : (project ? "Код — основной идентификатор проекта: 2–32 символа A–Z, цифры, «-» или «_». После появления операций код нельзя изменить." : (vendor ? "Поставщик выбирается в формах только при наличии активного типа поставщика." : (resource ? "Сотрудник или ресурс выбирается на вкладке 06 только вместе со связанным поставщиком." : (otherSubcontract ? "Тип поставщика фиксирован: «Подряд». Основные — затраты на вычислительные мощности, лицензии и т.д.; косвенные — сопутствующие затраты; прочие — навязанный субподряд." : ""))));
     const costSection = resource ? referenceCostSection(item) : "";
     const vatSection = vendor || otherSubcontract ? referenceVatSection(item) : "";
-    modal.innerHTML = '<section class="modal reference-modal" role="dialog" aria-modal="true" aria-labelledby="reference-modal-title"><div class="modal-header"><div><p class="eyebrow">НСИ</p><h2 id="reference-modal-title">' + (editing ? "Редактировать: " : "Новая запись: ") + escapeHtml(title) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="reference-form"><div class="form-grid ' + ((vendor || resource || otherSubcontract) ? "" : "single-field") + '">' + fields + '</div>' + costSection + vatSection + '<p class="form-note">' + note + '</p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
+    modal.innerHTML = '<section class="modal reference-modal" role="dialog" aria-modal="true" aria-labelledby="reference-modal-title"><div class="modal-header"><div><p class="eyebrow">НСИ</p><h2 id="reference-modal-title">' + (editing ? "Редактировать: " : "Новая запись: ") + escapeHtml(title) + '</h2></div><button class="close-button" type="button" aria-label="Закрыть">×</button></div><form id="reference-form"><div class="form-grid ' + ((vendor || resource || otherSubcontract || project) ? "" : "single-field") + '">' + fields + '</div>' + costSection + vatSection + '<p class="form-note">' + note + '</p><div class="form-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" type="submit">' + (editing ? "Сохранить" : "Создать") + '</button></div></form></section>';
     document.body.appendChild(modal);
     modal.querySelector(".close-button").addEventListener("click", closeReferenceModal);
     modal.querySelector("[data-close]").addEventListener("click", closeReferenceModal);
@@ -2059,7 +2085,7 @@
     });
     referenceForm.addEventListener("submit", async function(event) {
       event.preventDefault();
-      ["name", "providerType", "vendor", "category", "costPlan", "vatPlan"].forEach(function(name) { formError(name, ""); });
+      ["code", "name", "providerType", "vendor", "category", "costPlan", "vatPlan"].forEach(function(name) { formError(name, ""); });
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
       if (resource) body.costPlan = collectReferencePeriodPlan(referenceForm, "cost");
       if (vendor) body.vatPlan = body.providerType === "Подряд" ? collectReferencePeriodPlan(referenceForm, "vat") : {};
@@ -2104,7 +2130,7 @@
       const response = await fetch("/api/references/" + directory + "/" + encodeURIComponent(record.id), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: record.name, value: record.value, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, archived: false })
+        body: JSON.stringify({ name: record.name, code: record.code, value: record.value, providerType: record.providerType, vendor: record.vendor, category: record.category, costPlan: record.costPlan, vatPlan: record.vatPlan, financialKind: record.financialKind, project: record.project, year: record.year, rate: record.rate, archived: false })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Не удалось восстановить запись.");
@@ -2146,6 +2172,7 @@
   }
 
   function bindSubcontractControls() {
+    if (financialFeature) financialFeature.bindContractorControls();
     const add = document.getElementById("add-subcontract");
     if (add) add.addEventListener("click", function() { showSubcontractModal(null); });
     document.querySelectorAll("[data-subcontract-year-expand]").forEach(function(button) {
@@ -3137,21 +3164,22 @@
     const vendor = directory === "vendors";
     const resource = directory === "resources";
     const otherSubcontract = directory === "otherSubcontracts";
-    const headers = vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Статья/Подрядчик", "Тип поставщика", "Категория", "НДС", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""])));
+    const project = directory === "projects";
+    const headers = vendor ? ["Наименование", "Тип поставщика", "Статус", ""] : (resource ? ["Сотрудник / ресурс", "Поставщик", "Тип поставщика", "Статус", ""] : (otherSubcontract ? ["Статья/Подрядчик", "Тип поставщика", "Категория", "НДС", "Статус", ""] : (project ? ["Код", "Наименование", "Статус", ""] : (providerType ? ["Тип поставщика", "Статус", ""] : ["Наименование", "Статус", ""]))));
     const row = function(record, archivedRow) {
       const editConfig = function(field) { return archivedRow ? null : { scope: "reference", directory: directory, id: record.id, field: field }; };
       const actions = archivedRow
         ? '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="secondary-button compact-button" data-reference-restore="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Восстановить</button>' + historyButton("reference", record.id, directory)
         : '<button class="edit-button" data-reference-edit="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Изменить</button><button class="archive-button" data-reference-delete="' + escapeHtml(directory) + '" data-reference-id="' + escapeHtml(record.id) + '" type="button">Удалить</button>' + historyButton("reference", record.id, directory);
       const hasVat = otherSubcontract && Object.keys(record.vatPlan || {}).some(function(year) { return Object.keys(record.vatPlan[year] || {}).some(function(month) { return num(record.vatPlan[year][month]) > 0; }); });
-      const cells = inlineCell('<strong>' + escapeHtml(record.name) + '</strong>', editConfig("name")) +
+      const cells = (project ? inlineCell('<strong>' + escapeHtml(record.code || "Код не назначен") + '</strong>', editConfig("code")) : "") + inlineCell('<strong>' + escapeHtml(record.name) + '</strong>', editConfig("name")) +
         (vendor ? inlineCell(escapeHtml(record.providerType || "—"), editConfig("providerType")) : "") +
         (resource ? inlineCell(escapeHtml(record.vendor || "—"), editConfig("vendor")) + '<td>' + escapeHtml(record.providerType || "—") + '</td>' : "") +
         (otherSubcontract ? '<td>Подряд</td>' + inlineCell(escapeHtml(record.category || "—"), editConfig("category")) + '<td>' + (hasVat ? "Да" : "Нет") + '</td>' : "");
       return '<tr>' + cells + '<td><span class="status-chip ' + (archivedRow ? "archived" : "") + '">' + (archivedRow ? "Архив" : "Активна") + '</span></td><td class="reference-actions">' + actions + '</td></tr>';
     };
     const note = vendor ? "Поставщики выбираются в форме подрядной записи только из активных строк и имеют связанный тип."
-      : (providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»." : (resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06." : (otherSubcontract ? "Статьи расходов и подрядные организации вне привлечения ресурсов. Тип поставщика фиксирован: «Подряд»; «Да» в НДС означает, что заполнена хотя бы одна месячная ставка." : "Создавайте и редактируйте записи справочника.")));
+      : (project ? "Код является основным идентификатором проекта; изменение кода блокируется после появления связанных операций." : (providerType ? "Плоский справочник типов поставщика: «Штат» и «Подряд»." : (resource ? "Каждый сотрудник или ресурс связан с поставщиком и доступен на вкладке 06." : (otherSubcontract ? "Статьи расходов и подрядные организации вне привлечения ресурсов. Тип поставщика фиксирован: «Подряд»; «Да» в НДС означает, что заполнена хотя бы одна месячная ставка." : "Создавайте и редактируйте записи справочника."))));
     return '<article class="panel reference-directory">' + sectionTitle(details.title, note, integer(active.length)) +
       '<div class="table-toolbar"><span class="table-edit-hint">Двойной клик по доступному полю — редактирование</span><button class="primary-button" data-reference-add="' + escapeHtml(directory) + '" type="button">+ Новая запись</button></div>' +
       table(headers, active, function(record) { return row(record, false); }) +
@@ -3171,14 +3199,41 @@
     }).join("");
     return '<section class="nsi-catalog-layout" aria-label="Нормативно-справочная информация">' +
       '<aside class="nsi-catalog-list" aria-label="Справочники НСИ"><div class="nsi-catalog-caption">Справочники</div>' + catalog + '</aside>' +
-      '<div class="nsi-catalog-workspace">' + referenceDirectory(directory) + '</div>' +
+      '<div class="nsi-catalog-workspace">' + (directory === "financialRates" && financialFeature ? financialFeature.renderRatesReference() : referenceDirectory(directory)) + '</div>' +
       '</section>';
   }
+
+  financialFeature = window.BudgetFinancial && window.BudgetFinancial.create({
+    state: state,
+    escapeHtml: escapeHtml,
+    money: money,
+    percent: percent,
+    integer: integer,
+    num: num,
+    fullMonthLabels: fullMonthLabels,
+    referenceRecords: referenceRecords,
+    teamHours: teamHours,
+    teamCostValues: teamCostValues,
+    costContractorActualHours: costContractorActualHours,
+    costStaffActualHours: costStaffActualHours,
+    vendorVatRate: vendorVatRate,
+    otherSubcontractAmounts: otherSubcontractAmounts,
+    otherSubcontractReference: otherSubcontractReference,
+    financialDelta: financialDelta,
+    card: card,
+    sectionTitle: sectionTitle,
+    empty: empty,
+    barChart: barChart,
+    historyButton: historyButton,
+    refresh: refreshReferenceData,
+    render: render,
+    currentYear: currentHoursYear
+  });
 
   const renderers = [renderPipeline, renderIncome, renderCosts, renderSubcontracts, renderStaff, renderTeam, renderReference, renderOtherSubcontracts];
 
   function renderNavigation() {
-    const items = state.snapshot.tabs.map(function(tab, index) { return { tab: tab, index: index, order: index >= 3 ? index + 2 : index + 1 }; });
+    const items = state.snapshot.tabs.map(function(tab, index) { return { tab: index === 0 ? "Финансовый план-факт" : tab, index: index, order: index >= 3 ? index + 2 : index + 1 }; });
     items.splice(3, 0, { tab: "Прочий подряд", index: 7, order: 4 });
     nav.innerHTML = items.map(function(item) {
       return '<button class="tab-link ' + (item.index === state.activeTab ? "active" : "") + '" type="button" data-tab="' + item.index + '"><b>' + String(item.order).padStart(2, "0") + '</b><span>' + escapeHtml(item.tab) + '</span></button>';
@@ -3193,7 +3248,7 @@
     const isReferencePage = state.activeTab === 6;
     const directory = isReferencePage ? selectedReferenceDirectory() : null;
     const referenceTitle = directory && (state.references[directory] && state.references[directory].title || directory);
-    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : (state.activeTab === 7 ? "Прочий подряд" : state.snapshot.tabs[state.activeTab]);
+    pageTitle.textContent = isReferencePage ? "Нормативно-справочная информация" : (state.activeTab === 0 ? "Финансовый план-факт" : (state.activeTab === 7 ? "Прочий подряд" : state.snapshot.tabs[state.activeTab]));
     pageSubtitle.textContent = isReferencePage ? "Справочники, обеспечивающие единые правила ведения данных. Открыт: «" + referenceTitle + "»." : subtitles[state.activeTab];
     renderNavigation();
     yearFilter.value = state.year;
@@ -3206,6 +3261,8 @@
     if (state.activeTab === 6) bindReferenceControls();
     if (state.activeTab === 7) bindOtherSubcontractControls();
     if (state.activeTab === 2) bindProjectCostControls();
+    if ((state.activeTab === 0 || state.activeTab === 1) && financialFeature) financialFeature.bindFinancialControls();
+    if (state.activeTab === 6 && state.referenceDirectory === "financialRates" && financialFeature) financialFeature.bindRatesControls();
     bindInlineEditing();
     bindChangeLogControls();
     setupTableRowNumbering();
