@@ -1651,29 +1651,16 @@
   }
 
   async function refreshReferenceData() {
-    const responses = await Promise.all([
-      fetch("/api/model", { cache: "no-store" }),
-      fetch("/api/subcontracts", { cache: "no-store" }),
-      fetch("/api/references", { cache: "no-store" }),
-      fetch("/api/team", { cache: "no-store" }),
-      fetch("/api/staff", { cache: "no-store" }),
-      fetch("/api/other-subcontracts", { cache: "no-store" }),
-      fetch("/api/financial", { cache: "no-store" })
-    ]);
-    const model = await responses[0].json();
-    const subcontracts = await responses[1].json();
-    const references = await responses[2].json();
-    const team = await responses[3].json();
-    const staff = await responses[4].json();
-    const otherSubcontracts = await responses[5].json();
-    const financial = await responses[6].json();
-    if (!responses[0].ok) throw new Error(model.error || "Не удалось загрузить данные.");
-    if (!responses[1].ok) throw new Error(subcontracts.error || "Не удалось загрузить подрядные записи.");
-    if (!responses[2].ok) throw new Error(references.error || "Не удалось загрузить справочники.");
-    if (!responses[3].ok) throw new Error(team.error || "Не удалось загрузить записи команды.");
-    if (!responses[4].ok) throw new Error(staff.error || "Не удалось загрузить штатные записи.");
-    if (!responses[5].ok) throw new Error(otherSubcontracts.error || "Не удалось загрузить прочий подряд.");
-    if (!responses[6].ok) throw new Error(financial.error || "Не удалось загрузить финансовые события.");
+    const response = await fetch("/api/bootstrap", { cache: "no-store" });
+    const bootstrap = await response.json();
+    if (!response.ok) throw new Error(bootstrap.error || "Не удалось загрузить данные.");
+    const model = bootstrap.model || {};
+    const subcontracts = bootstrap.subcontracts || {};
+    const references = bootstrap.references || {};
+    const team = bootstrap.team || {};
+    const staff = bootstrap.staff || {};
+    const otherSubcontracts = bootstrap.otherSubcontracts || {};
+    const financial = bootstrap.financial || {};
     state.snapshot = model.snapshot;
     state.overview = model.overview;
     state.subcontracts = subcontracts.records || [];

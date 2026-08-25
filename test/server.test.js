@@ -284,6 +284,11 @@ test("хранит независимые доходы и оплаты с НДС
     return { status: response.status, body: await response.json() };
   };
   try {
+    const bootstrap = await request("/api/bootstrap");
+    assert.equal(bootstrap.status, 200);
+    assert.deepEqual(bootstrap.body.model.snapshot.finance.years, ["2026"]);
+    assert.ok(Array.isArray(bootstrap.body.references.directories.projects.records));
+
     const references = await request("/api/references");
     const project = references.body.directories.projects.records[0];
     assert.match(project.code, /^PRJ-\d{3}$/);

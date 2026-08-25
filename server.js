@@ -593,15 +593,27 @@ function mergeReferenceDirectories(base, saved) {
   }, {});
 }
 
-async function readReferenceDirectories(snapshotPath, subcontractOverridesPath, referenceOverridesPath) {
-  const snapshot = await readSnapshot(snapshotPath || SNAPSHOT_PATH);
-  const subcontracts = await readSubcontractRecords(snapshotPath || SNAPSHOT_PATH, subcontractOverridesPath || SUBCONTRACT_OVERRIDES_PATH);
+async function readReferenceOverrides(referenceOverridesPath) {
   let saved = null;
   try {
     saved = JSON.parse(await fs.readFile(referenceOverridesPath || REFERENCE_OVERRIDES_PATH, "utf8"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+  return saved;
+}
+
+async function readReferenceDirectories(snapshotPath, subcontractOverridesPath, referenceOverridesPath) {
+  const paths = {
+    snapshot: snapshotPath || SNAPSHOT_PATH,
+    subcontracts: subcontractOverridesPath || SUBCONTRACT_OVERRIDES_PATH,
+    references: referenceOverridesPath || REFERENCE_OVERRIDES_PATH
+  };
+  const [snapshot, subcontracts, saved] = await Promise.all([
+    readSnapshot(paths.snapshot),
+    readSubcontractRecords(paths.snapshot, paths.subcontracts),
+    readReferenceOverrides(paths.references)
+  ]);
   return mergeReferenceDirectories(buildReferenceDirectories(snapshot, subcontracts), saved);
 }
 
@@ -732,27 +744,50 @@ function resolvedReferenceName(directories, directory, value) {
   return record ? record.name : value;
 }
 
+function referenceRecordLookup(directories, directory) {
+  return (directories[directory] || []).reduce(function(lookup, record) {
+    if (record.deleted) return lookup;
+    referenceValues(record).forEach(function(key) {
+      if (!lookup[key]) lookup[key] = record;
+    });
+    return lookup;
+  }, Object.create(null));
+}
+
+function lookupReferenceName(lookup, value) {
+  const record = lookup[normalizeReferenceKey(value)];
+  return record ? record.name : value;
+}
+
 function applyReferencesToSubcontracts(records, directories) {
+  const projects = referenceRecordLookup(directories, "projects");
+  const vendors = referenceRecordLookup(directories, "vendors");
+  const resources = referenceRecordLookup(directories, "resources");
   return (records || []).map(function(record) {
     return Object.assign({}, record, {
-      project: resolvedReferenceName(directories, "projects", record.project),
-      vendor: resolvedReferenceName(directories, "vendors", record.vendor),
-      resource: resolvedReferenceName(directories, "resources", record.resource)
+      project: lookupReferenceName(projects, record.project),
+      vendor: lookupReferenceName(vendors, record.vendor),
+      resource: lookupReferenceName(resources, record.resource)
     });
   });
 }
 
 function applyReferencesToTeamRecords(records, directories) {
+  const resources = referenceRecordLookup(directories, "resources");
+  const projects = referenceRecordLookup(directories, "projects");
+  const roles = referenceRecordLookup(directories, "roles");
+  const vendors = referenceRecordLookup(directories, "vendors");
+  const providers = referenceRecordLookup(directories, "providers");
   return (records || []).map(function(record) {
-    const resource = findReferenceRecord(directories, "resources", record.employee);
+    const resource = resources[normalizeReferenceKey(record.employee)];
     const costPlan = resource && resource.costPlan ? resource.costPlan : record.costPlan;
     const vendor = resource && resource.vendor ? resource.vendor : record.vendor;
     const firstCost = costPlan && costPlan["2026"] && costPlan["2026"]["1"];
     return Object.assign({}, record, {
-      project: resolvedReferenceName(directories, "projects", record.project),
-      role: resolvedReferenceName(directories, "roles", record.role),
-      vendor: resolvedReferenceName(directories, "vendors", vendor),
-      provider: resolvedReferenceName(directories, "providers", record.provider),
+      project: lookupReferenceName(projects, record.project),
+      role: lookupReferenceName(roles, record.role),
+      vendor: lookupReferenceName(vendors, vendor),
+      provider: lookupReferenceName(providers, record.provider),
       costPlan: costPlan,
       rate: firstCost ? Number(firstCost.rate) : record.rate,
       attraction: firstCost ? Number(firstCost.attraction) : record.attraction,
@@ -762,10 +797,12 @@ function applyReferencesToTeamRecords(records, directories) {
 }
 
 function applyReferencesToStaffRecords(records, directories) {
+  const projects = referenceRecordLookup(directories, "projects");
+  const roles = referenceRecordLookup(directories, "roles");
   return (records || []).map(function(record) {
     return Object.assign({}, record, {
-      project: resolvedReferenceName(directories, "projects", record.project),
-      role: resolvedReferenceName(directories, "roles", record.role)
+      project: lookupReferenceName(projects, record.project),
+      role: lookupReferenceName(roles, record.role)
     });
   });
 }
@@ -1009,10 +1046,12 @@ function calculateOtherSubcontractRecord(record, directories) {
 }
 
 function applyReferencesToOtherSubcontractRecords(records, directories) {
+  const otherSubcontracts = referenceRecordLookup(directories, "otherSubcontracts");
+  const projects = referenceRecordLookup(directories, "projects");
   return (records || []).map(function(record) {
     return Object.assign({}, record, {
-      otherSubcontract: resolvedReferenceName(directories, "otherSubcontracts", record.otherSubcontract),
-      project: resolvedReferenceName(directories, "projects", record.project),
+      otherSubcontract: lookupReferenceName(otherSubcontracts, record.otherSubcontract),
+      project: lookupReferenceName(projects, record.project),
       calculated: calculateOtherSubcontractRecord(record, directories)
     });
   });
@@ -1521,6 +1560,32 @@ function createServer(snapshotPath, overridesPath, referenceOverridesPath, teamO
         const directories = await readReferenceDirectories(source, overrides, referenceOverrides);
         const workbook = await buildNsiExportWorkbook(directories);
         sendExcel(response, "Выгрузка_НСИ_бюджетирования.xlsx", workbook);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/bootstrap") {
+        const [snapshot, subcontracts, team, staff, otherSubcontracts, financial, savedReferences] = await Promise.all([
+          readSnapshot(source),
+          readSubcontractRecords(source, overrides),
+          readTeamRecords(source, teamOverrides),
+          readStaffRecords(source, staffOverrides),
+          readOtherSubcontractRecords(otherSubcontractOverrides),
+          readFinancialEvents(financialEvents),
+          readReferenceOverrides(referenceOverrides)
+        ]);
+        const directories = mergeReferenceDirectories(buildReferenceDirectories(snapshot, subcontracts), savedReferences);
+        const compactSnapshot = {
+          tabs: Array.isArray(snapshot.tabs) ? snapshot.tabs : [],
+          finance: { years: ((snapshot.finance || {}).years || []).map(String) }
+        };
+        sendJson(response, 200, {
+          model: { snapshot: compactSnapshot, overview: buildOverview(snapshot) },
+          subcontracts: { records: applyReferencesToSubcontracts(subcontracts, directories) },
+          references: { directories: publicReferenceDirectories(directories) },
+          team: { records: applyReferencesToTeamRecords(team, directories) },
+          staff: { records: applyReferencesToStaffRecords(staff, directories) },
+          otherSubcontracts: { records: applyReferencesToOtherSubcontractRecords(otherSubcontracts, directories) },
+          financial: financial
+        });
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/model") {

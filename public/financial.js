@@ -6,6 +6,7 @@
 
   function create(api) {
     const formulas = window.BudgetFinancialFormulas;
+    let accrualCache = null;
     const state = api.state;
     const text = api.escapeHtml;
     const money = api.money;
@@ -60,6 +61,10 @@
       return Array.from(years).sort(function (left, right) { return Number(left) - Number(right); });
     }
 
+    function calculationYears() {
+      return selectedYears().slice().sort(function (left, right) { return Number(left) - Number(right); });
+    }
+
     function rateFor(kind, projectCode, year) {
       const target = String(year);
       const project = projectByCode(projectCode);
@@ -89,20 +94,51 @@
       };
     }
 
+    function indexKey(parts) {
+      return parts.map(function (part) { return String(part == null ? "" : part); }).join("\u001f");
+    }
+
+    function addToIndex(index, key, value) {
+      index[key] = number(index[key]) + number(value);
+    }
+
     function accruals() {
       const result = [];
-      const years = allModelYears();
-      state.teamRecords.filter(function (item) { return !item.archived && item.project; }).forEach(function (resource) {
-        const project = projects(true).find(function (item) { return item.name === resource.project; });
-        if (!project || !project.code) return;
+      const years = calculationYears();
+      const cached = accrualCache;
+      if (cached && cached.teamRecords === state.teamRecords && cached.subcontracts === state.subcontracts && cached.staffRecords === state.staffRecords && cached.otherSubcontractRecords === state.otherSubcontractRecords && cached.references === state.references && cached.years === years.join("|")) return cached.rows;
+      const projectCodes = Object.create(null);
+      projects(true).forEach(function (project) { projectCodes[project.name] = project.code; });
+      const vendorPlans = Object.create(null);
+      api.referenceRecords("vendors", true).forEach(function (vendor) { vendorPlans[vendor.name] = vendor.vatPlan || {}; });
+      const contractorActual = Object.create(null);
+      state.subcontracts.forEach(function (record) {
+        if (record.archived || !record.period) return;
+        const values = new Set([record.resource, record.article, record.vendor].map(function (value) { return String(value || "").trim().toLocaleLowerCase("ru-RU"); }).filter(Boolean));
+        values.forEach(function (value) { addToIndex(contractorActual, indexKey([record.project, value, record.period]), record.actualHours); });
+      });
+      const staffActual = Object.create(null);
+      state.staffRecords.forEach(function (record) {
+        if (record.archived) return;
+        years.forEach(function (year) {
+          for (let month = 1; month <= 12; month += 1) addToIndex(staffActual, indexKey([record.project, record.employee, record.role, year + "-" + String(month).padStart(2, "0")]), record.hoursActual && record.hoursActual[String(year)] && record.hoursActual[String(year)][String(month)]);
+        });
+      });
+      state.teamRecords.forEach(function (resource) {
+        if (resource.archived || !resource.project) return;
+        const projectCode = projectCodes[resource.project];
+        if (!projectCode) return;
+        const contractor = resource.source === "Подряд";
+        const resourceKey = String(resource.employee || "").trim().toLocaleLowerCase("ru-RU");
         years.forEach(function (year) {
           for (let month = 1; month <= 12; month += 1) {
             const period = year + "-" + String(month).padStart(2, "0");
             const rate = api.teamCostValues(resource, year, month);
-            const contractor = resource.source === "Подряд";
-            const vat = contractor ? api.vendorVatRate(resource.vendor, year, month) : { value: 0, known: true };
+            const vatMonths = contractor && vendorPlans[resource.vendor] && vendorPlans[resource.vendor][String(year)];
+            const vatKnown = Boolean(vatMonths && Object.prototype.hasOwnProperty.call(vatMonths, String(month)));
+            const vat = contractor ? { value: number(vatKnown ? vatMonths[String(month)] : 0) / 100, known: vatKnown } : { value: 0, known: true };
             const planHours = api.teamHours(resource, year, month);
-            const factHours = contractor ? api.costContractorActualHours(resource, year, month) : api.costStaffActualHours(resource, year, month);
+            const factHours = contractor ? number(contractorActual[indexKey([resource.project, resourceKey, period])]) : number(staffActual[indexKey([resource.project, resource.employee, resource.role, period])]);
             ["plan", "fact"].forEach(function (scenario) {
               const hours = scenario === "plan" ? planHours : factHours;
               if (!hours) return;
@@ -111,8 +147,8 @@
                 id: "resource:" + resource.id + ":" + scenario + ":" + period,
                 type: contractor ? "resource" : "staff",
                 scenario: scenario,
-                projectCode: project.code,
-                project: project.name,
+                projectCode: projectCode,
+                project: resource.project,
                 period: period,
                 contractor: contractor ? resource.vendor : "Штат",
                 resource: resource.employee,
@@ -131,9 +167,10 @@
           }
         });
       });
-      state.otherSubcontractRecords.filter(function (item) { return !item.archived; }).forEach(function (record) {
-        const project = projects(true).find(function (item) { return item.name === record.project; });
-        if (!project || !project.code) return;
+      state.otherSubcontractRecords.forEach(function (record) {
+        if (record.archived) return;
+        const projectCode = projectCodes[record.project];
+        if (!projectCode) return;
         years.forEach(function (year) {
           for (let month = 1; month <= 12; month += 1) {
             const period = year + "-" + String(month).padStart(2, "0");
@@ -144,8 +181,8 @@
                 id: "other:" + record.id + ":" + scenario + ":" + period,
                 type: "other",
                 scenario: scenario,
-                projectCode: project.code,
-                project: project.name,
+                projectCode: projectCode,
+                project: record.project,
                 period: period,
                 contractor: record.otherSubcontract,
                 resource: "",
@@ -164,6 +201,10 @@
           }
         });
       });
+      accrualCache = {
+        teamRecords: state.teamRecords, subcontracts: state.subcontracts, staffRecords: state.staffRecords, otherSubcontractRecords: state.otherSubcontractRecords,
+        references: state.references, years: years.join("|"), rows: result
+      };
       return result;
     }
 
@@ -179,13 +220,35 @@
       return items.reduce(function (total, item) { return total + number(item[field]); }, 0);
     }
 
-    function collectScenario(code, year, scenario) {
-      const income = events("incomes").filter(function (item) { return matches(item, code, year, scenario); });
-      const accrual = accruals().filter(function (item) { return matches(item, code, year, scenario); });
-      const payment = events("payments").filter(function (item) { return matches(item, code, year, scenario); });
-      const other = accrual.filter(function (item) { return item.type === "other"; });
-      const contractor = accrual.filter(function (item) { return item.type === "resource"; });
-      const staff = accrual.filter(function (item) { return item.type === "staff"; });
+    function collectionIndex(items) {
+      return items.reduce(function (index, item) {
+        const key = indexKey([item.scenario, item.projectCode, String(item.period || "").slice(0, 4)]);
+        (index[key] || (index[key] = [])).push(item);
+        return index;
+      }, Object.create(null));
+    }
+
+    function accrualIndex(items) {
+      return items.reduce(function (index, item) {
+        const key = indexKey([item.scenario, item.projectCode, String(item.period || "").slice(0, 4)]);
+        const bucket = index[key] || (index[key] = { accrual: [], other: [], contractor: [], staff: [] });
+        bucket.accrual.push(item);
+        if (item.type === "other") bucket.other.push(item);
+        else if (item.type === "resource") bucket.contractor.push(item);
+        else bucket.staff.push(item);
+        return index;
+      }, Object.create(null));
+    }
+
+    function collectScenario(code, year, scenario, indexes) {
+      const key = indexKey([scenario, code, year]);
+      const income = indexes.incomes[key] || [];
+      const payment = indexes.payments[key] || [];
+      const bucket = indexes.accruals[key] || { accrual: [], other: [], contractor: [], staff: [] };
+      const accrual = bucket.accrual;
+      const other = bucket.other;
+      const contractor = bucket.contractor;
+      const staff = bucket.staff;
       const grossIncome = sum(income, "gross");
       const outputVat = sum(income, "vat");
       const otherGross = sum(other, "gross");
@@ -213,11 +276,14 @@
     function calculate() {
       const total = {};
       const slices = [];
+      const indexes = { incomes: collectionIndex(events("incomes")), payments: collectionIndex(events("payments")), accruals: accrualIndex(accruals()) };
+      const slicesByScenarioYear = Object.create(null);
       selectedCodes().forEach(function (code) {
         selectedYears().forEach(function (year) {
           ["plan", "fact"].forEach(function (scenario) {
-            const value = collectScenario(code, year, scenario);
+            const value = collectScenario(code, year, scenario, indexes);
             slices.push({ code: code, year: year, scenario: scenario, value: value });
+            (slicesByScenarioYear[indexKey([scenario, year])] || (slicesByScenarioYear[indexKey([scenario, year])] = [])).push(value);
             if (!total[scenario]) total[scenario] = {};
             addMetric(total[scenario], value);
           });
@@ -233,7 +299,7 @@
           const yearlyOverdraftRate = rateFor("overdraft", "", year);
           for (let month = 1; month <= 12; month += 1) {
             const period = year + "-" + String(month).padStart(2, "0");
-            const periodSlices = slices.filter(function (item) { return item.scenario === scenario && item.year === year; }).map(function (item) { return item.value; });
+            const periodSlices = slicesByScenarioYear[indexKey([scenario, year])] || [];
             const incoming = periodSlices.reduce(function (amount, item) { return amount + sum(item.incomeEvents.filter(function (event) { return event.period === period; }), "gross"); }, 0);
             const payments = periodSlices.reduce(function (amount, item) {
               const contractors = sum(item.payments.filter(function (event) { return event.period === period; }), "gross");
