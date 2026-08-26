@@ -1,0 +1,238 @@
+{
+  "entries": [
+    {
+      "id": "change-1787772332043-tzu9b7",
+      "changedAt": "2026-08-26T19:25:32.043Z",
+      "entity": "reference",
+      "directory": "financialRates",
+      "recordId": "source-financialRates-10002",
+      "recordLabel": "Овердрафт · 2024-2025",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Наименование",
+          "before": "Овердрафт · 2024–2026",
+          "after": "Овердрафт · 2024-2025"
+        },
+        {
+          "field": "Период",
+          "before": "2024-2026",
+          "after": "2024-2025"
+        }
+      ]
+    },
+    {
+      "id": "change-1787772331214-7z8mb9",
+      "changedAt": "2026-08-26T19:25:31.214Z",
+      "entity": "reference",
+      "directory": "vendors",
+      "recordId": "import-vendors-1787772318956-41",
+      "recordLabel": "ООО “Лоялти Лабс”",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "НДС по месяцам · 2026 / 1",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 2",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 3",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 4",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 5",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 6",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 7",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 8",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 9",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 10",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 11",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 12",
+          "before": "0",
+          "after": "22"
+        }
+      ]
+    },
+    {
+      "id": "change-1787772330396-a5oa9u",
+      "changedAt": "2026-08-26T19:25:30.396Z",
+      "entity": "reference",
+      "directory": "vendors",
+      "recordId": "import-vendors-1787772318956-38",
+      "recordLabel": "ООО \"АСЭСТИК ИБТ\"",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "НДС по месяцам · 2026 / 1",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 2",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 3",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 4",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 5",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 6",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 7",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 8",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 9",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 10",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 11",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 12",
+          "before": "0",
+          "after": "22"
+        }
+      ]
+    },
+    {
+      "id": "change-1787772330075-asxjqy",
+      "changedAt": "2026-08-26T19:25:30.075Z",
+      "entity": "reference",
+      "directory": "vendors",
+      "recordId": "import-vendors-1787772318956-34",
+      "recordLabel": "Артезио",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "НДС по месяцам · 2026 / 1",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 2",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 3",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 4",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 5",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 6",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 7",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 8",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 9",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 10",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 11",
+          "before": "0",
+          "after": "22"
+        },
+        {
+          "field": "НДС по месяцам · 2026 / 12",
+          "before": "0",
+          "after": "22"
+        }
+      ]
+    }
+  ]
+}
