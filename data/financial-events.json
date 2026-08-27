@@ -287,8 +287,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787860050640-ns1q6",
+      "projectCode": "EDC-SUPP_24-26",
+      "scenario": "plan",
+      "period": "2026-11",
+      "gross": 85491.44,
+      "vatRate": 22,
+      "vat": 15416.48918032787,
+      "comment": "",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:46:29.341Z"
+  "updatedAt": "2026-08-27T19:47:30.640Z"
 }
