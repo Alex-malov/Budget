@@ -329,7 +329,7 @@
       {
         "id": "import-projects-1787772318955-22",
         "name": "ГИС ОК: Редизайн",
-        "code": "",
+        "code": "GISOK-DESIGN_24",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -26929,5 +26929,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-27T19:19:06.297Z"
+  "updatedAt": "2026-08-27T19:19:32.061Z"
 }

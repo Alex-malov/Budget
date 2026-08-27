@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858372128-utys6j",
+      "changedAt": "2026-08-27T19:19:32.128Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-22",
+      "recordLabel": "ГИС ОК: Редизайн",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "GISOK-DESIGN_24"
+        }
+      ]
+    },
+    {
       "id": "change-1787858346351-v0sq0p",
       "changedAt": "2026-08-27T19:19:06.351Z",
       "entity": "reference",
