@@ -1,6 +1,16 @@
 {
   "entries": [
     {
+      "id": "change-1787859563987-ozfd00",
+      "changedAt": "2026-08-27T19:39:23.987Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787859563926-2jddx",
+      "recordLabel": "financial-incomes-1787859563926-2jddx",
+      "action": "created",
+      "changes": []
+    },
+    {
       "id": "change-1787859534013-sg6xgq",
       "changedAt": "2026-08-27T19:38:54.013Z",
       "entity": "incomes",
