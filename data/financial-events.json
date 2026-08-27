@@ -255,8 +255,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787859982725-egxiy",
+      "projectCode": "EDC-SUPP_24-26",
+      "scenario": "fact",
+      "period": "2026-08",
+      "gross": 25016695.12,
+      "vatRate": 22,
+      "vat": 4511207.316721312,
+      "comment": "28.10.2024 УПД 23-07-01 от 23.07.2026 за вып.раб.по тех.под.ГИС Б/О 28243 в т.ч. НДС 22% 4 511 207,32 руб.",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:46:00.829Z"
+  "updatedAt": "2026-08-27T19:46:22.725Z"
 }
