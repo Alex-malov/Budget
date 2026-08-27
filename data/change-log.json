@@ -1,6 +1,26 @@
 {
   "entries": [
     {
+      "id": "change-1787859231753-x5m7pi",
+      "changedAt": "2026-08-27T19:33:51.753Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787859231674-l88fq",
+      "recordLabel": "financial-incomes-1787859231674-l88fq",
+      "action": "created",
+      "changes": []
+    },
+    {
+      "id": "change-1787858907684-opp06i",
+      "changedAt": "2026-08-27T19:28:27.684Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787858907633-3snik",
+      "recordLabel": "financial-incomes-1787858907633-3snik",
+      "action": "created",
+      "changes": []
+    },
+    {
       "id": "change-1787858897941-s01dbf",
       "changedAt": "2026-08-27T19:28:17.941Z",
       "entity": "incomes",
