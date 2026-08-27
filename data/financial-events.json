@@ -303,8 +303,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787860077216-ohp33",
+      "projectCode": "EDC-SUPP_26-27",
+      "scenario": "plan",
+      "period": "2027-02",
+      "gross": 40834127.35,
+      "vatRate": 22,
+      "vat": 7363531.161475411,
+      "comment": "СТП+Адаптация",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:47:30.640Z"
+  "updatedAt": "2026-08-27T19:47:57.216Z"
 }
