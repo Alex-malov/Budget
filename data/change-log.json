@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858436724-kd2pe2",
+      "changedAt": "2026-08-27T19:20:36.724Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-25",
+      "recordLabel": "ППОЗ. Отключения 2026",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "PPOZ-OTKL-DEV_26"
+        }
+      ]
+    },
+    {
       "id": "change-1787858393544-8hjoau",
       "changedAt": "2026-08-27T19:19:53.544Z",
       "entity": "reference",

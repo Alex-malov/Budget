@@ -386,7 +386,7 @@
       {
         "id": "import-projects-1787772318955-25",
         "name": "ППОЗ. Отключения 2026",
-        "code": "",
+        "code": "PPOZ-OTKL-DEV_26",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -26929,5 +26929,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-27T19:19:53.760Z"
+  "updatedAt": "2026-08-27T19:20:36.666Z"
 }
