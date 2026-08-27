@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858393544-8hjoau",
+      "changedAt": "2026-08-27T19:19:53.544Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-24",
+      "recordLabel": "ЕДЦ: Разработка 25-26",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "EDC-DEV_25-26"
+        }
+      ]
+    },
+    {
       "id": "change-1787858386410-j0aiy7",
       "changedAt": "2026-08-27T19:19:46.410Z",
       "entity": "reference",
