@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858323647-lc2ma0",
+      "changedAt": "2026-08-27T19:18:43.647Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-20",
+      "recordLabel": "ГИС ОК: Саппорт",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "GISOK-SUPP_25-26"
+        }
+      ]
+    },
+    {
       "id": "change-1787858306467-ljxe4f",
       "changedAt": "2026-08-27T19:18:26.467Z",
       "entity": "reference",

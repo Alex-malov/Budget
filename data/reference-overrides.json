@@ -291,7 +291,7 @@
       {
         "id": "import-projects-1787772318955-20",
         "name": "ГИС ОК: Саппорт",
-        "code": "",
+        "code": "GISOK-SUPP_25-26",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -26929,5 +26929,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-27T19:18:26.384Z"
+  "updatedAt": "2026-08-27T19:18:43.591Z"
 }
