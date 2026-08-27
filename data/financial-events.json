@@ -36,7 +36,7 @@
       "id": "financial-incomes-1787858738999-5p3vx",
       "projectCode": "GISOK-DEV_25-26",
       "scenario": "plan",
-      "period": "2024-04",
+      "period": "2026-04",
       "gross": 88453559.2,
       "vatRate": 22,
       "vat": 15950641.822950821,
@@ -66,5 +66,5 @@
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:26:14.824Z"
+  "updatedAt": "2026-08-27T19:26:43.220Z"
 }
