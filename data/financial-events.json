@@ -159,8 +159,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787859514193-r6bh8",
+      "projectCode": "EDC-DEV_24-26",
+      "scenario": "plan",
+      "period": "2026-09",
+      "gross": 4716726.35,
+      "vatRate": 22,
+      "vat": 850557.2106557376,
+      "comment": "Этап 17\nИБ",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:38:13.870Z"
+  "updatedAt": "2026-08-27T19:38:34.193Z"
 }
