@@ -63,8 +63,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787858897875-s9a0x",
+      "projectCode": "GISOK-SUPP_25-26",
+      "scenario": "plan",
+      "period": "2026-07",
+      "gross": 10000000,
+      "vatRate": 22,
+      "vat": 1803278.68852459,
+      "comment": "",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:27:26.789Z"
+  "updatedAt": "2026-08-27T19:28:17.875Z"
 }
