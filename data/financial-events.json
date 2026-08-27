@@ -1,0 +1,22 @@
+{
+  "incomes": [
+    {
+      "id": "financial-incomes-1787858674028-y7cpp",
+      "projectCode": "GISOK-DEV_25-26",
+      "scenario": "fact",
+      "period": "2024-04",
+      "gross": 88453559.2,
+      "vatRate": 22,
+      "vat": 15950641.822950821,
+      "comment": "",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
+    }
+  ],
+  "payments": [],
+  "updatedAt": "2026-08-27T19:24:34.028Z"
+}

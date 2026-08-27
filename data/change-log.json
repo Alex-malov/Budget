@@ -1,6 +1,16 @@
 {
   "entries": [
     {
+      "id": "change-1787858674258-1eg02i",
+      "changedAt": "2026-08-27T19:24:34.258Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787858674028-y7cpp",
+      "recordLabel": "financial-incomes-1787858674028-y7cpp",
+      "action": "created",
+      "changes": []
+    },
+    {
       "id": "change-1787858459926-bflty2",
       "changedAt": "2026-08-27T19:20:59.926Z",
       "entity": "reference",
