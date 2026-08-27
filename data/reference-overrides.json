@@ -439,6 +439,25 @@
         ],
         "archived": false,
         "deleted": false
+      },
+      {
+        "id": "local-projects-1787860029237-j86rt",
+        "name": "Аварийный СТП на 10.26-09.27",
+        "code": "EDC-SUPP_26-27",
+        "value": "",
+        "parent": "",
+        "providerType": "",
+        "vendor": "",
+        "category": "",
+        "financialKind": "",
+        "project": "",
+        "year": "",
+        "sourceKey": "local-projects-1787860029237-j86rt",
+        "sourceValues": [
+          "Аварийный СТП на 10.26-09.27"
+        ],
+        "archived": false,
+        "deleted": false
       }
     ],
     "vendors": [
@@ -26929,5 +26948,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-27T19:20:59.692Z"
+  "updatedAt": "2026-08-27T19:47:09.237Z"
 }
