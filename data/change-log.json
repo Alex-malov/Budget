@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858306467-ljxe4f",
+      "changedAt": "2026-08-27T19:18:26.467Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-19",
+      "recordLabel": "ГИС ОК: Разработка",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "GISOK-DEV_25-26"
+        }
+      ]
+    },
+    {
       "id": "change-1787774297515-7z6ohk",
       "changedAt": "2026-08-26T19:58:17.515Z",
       "entity": "reference",

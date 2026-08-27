@@ -272,7 +272,7 @@
       {
         "id": "import-projects-1787772318955-19",
         "name": "ГИС ОК: Разработка",
-        "code": "",
+        "code": "GISOK-DEV_25-26",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -26929,5 +26929,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-26T19:58:17.403Z"
+  "updatedAt": "2026-08-27T19:18:26.384Z"
 }
