@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858846846-8luc2g",
+      "changedAt": "2026-08-27T19:27:26.846Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787858774824-gy58u",
+      "recordLabel": "financial-incomes-1787858774824-gy58u",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Месяц",
+          "before": "2024-08",
+          "after": "2026-08"
+        }
+      ]
+    },
+    {
       "id": "change-1787858836477-93s8fq",
       "changedAt": "2026-08-27T19:27:16.477Z",
       "entity": "incomes",
