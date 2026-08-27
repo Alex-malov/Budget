@@ -1,6 +1,38 @@
 {
   "entries": [
     {
+      "id": "change-1787858459926-bflty2",
+      "changedAt": "2026-08-27T19:20:59.926Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-27",
+      "recordLabel": "ЕДЦ: Саппорт",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "EDC-SUPP_24-26"
+        }
+      ]
+    },
+    {
+      "id": "change-1787858447773-p84mnu",
+      "changedAt": "2026-08-27T19:20:47.773Z",
+      "entity": "reference",
+      "directory": "projects",
+      "recordId": "import-projects-1787772318955-26",
+      "recordLabel": "ЕДЦ: 26 Разработка",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Код",
+          "before": "—",
+          "after": "EDC-DEV_26"
+        }
+      ]
+    },
+    {
       "id": "change-1787858436724-kd2pe2",
       "changedAt": "2026-08-27T19:20:36.724Z",
       "entity": "reference",

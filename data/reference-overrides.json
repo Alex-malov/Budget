@@ -405,7 +405,7 @@
       {
         "id": "import-projects-1787772318955-26",
         "name": "ЕДЦ: 26 Разработка",
-        "code": "",
+        "code": "EDC-DEV_26",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -424,7 +424,7 @@
       {
         "id": "import-projects-1787772318955-27",
         "name": "ЕДЦ: Саппорт",
-        "code": "",
+        "code": "EDC-SUPP_24-26",
         "value": "",
         "parent": "",
         "providerType": "",
@@ -26929,5 +26929,5 @@
       }
     ]
   },
-  "updatedAt": "2026-08-27T19:20:36.666Z"
+  "updatedAt": "2026-08-27T19:20:59.692Z"
 }
