@@ -37,9 +37,9 @@
       "projectCode": "GISOK-DEV_25-26",
       "scenario": "plan",
       "period": "2024-04",
-      "gross": 1,
+      "gross": 88453559.2,
       "vatRate": 22,
-      "vat": 0.18032786885245902,
+      "vat": 15950641.822950821,
       "comment": "",
       "contractor": "",
       "source": "",
@@ -50,5 +50,5 @@
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:25:38.999Z"
+  "updatedAt": "2026-08-27T19:25:56.775Z"
 }

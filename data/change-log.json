@@ -1,6 +1,22 @@
 {
   "entries": [
     {
+      "id": "change-1787858757088-nr8btq",
+      "changedAt": "2026-08-27T19:25:57.088Z",
+      "entity": "incomes",
+      "directory": "",
+      "recordId": "financial-incomes-1787858738999-5p3vx",
+      "recordLabel": "financial-incomes-1787858738999-5p3vx",
+      "action": "updated",
+      "changes": [
+        {
+          "field": "Сумма с НДС",
+          "before": "1",
+          "after": "88453559.2"
+        }
+      ]
+    },
+    {
       "id": "change-1787858739061-1t4rng",
       "changedAt": "2026-08-27T19:25:39.061Z",
       "entity": "incomes",
