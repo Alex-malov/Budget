@@ -31,8 +31,24 @@
       "documentNumber": "",
       "allocations": [],
       "archived": false
+    },
+    {
+      "id": "financial-incomes-1787858738999-5p3vx",
+      "projectCode": "GISOK-DEV_25-26",
+      "scenario": "plan",
+      "period": "2024-04",
+      "gross": 1,
+      "vatRate": 22,
+      "vat": 0.18032786885245902,
+      "comment": "",
+      "contractor": "",
+      "source": "",
+      "documentDate": "",
+      "documentNumber": "",
+      "allocations": [],
+      "archived": false
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:25:06.544Z"
+  "updatedAt": "2026-08-27T19:25:38.999Z"
 }
