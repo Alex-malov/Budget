@@ -180,7 +180,7 @@
       "id": "financial-incomes-1787859533959-8gs9h",
       "projectCode": "EDC-DEV_24-26",
       "scenario": "plan",
-      "period": "2026-12",
+      "period": "2026-06",
       "gross": 7996325.14,
       "vatRate": 22,
       "vat": 1441960.2711475408,
@@ -354,5 +354,5 @@
     }
   ],
   "payments": [],
-  "updatedAt": "2026-08-27T19:48:33.070Z"
+  "updatedAt": "2026-08-28T09:00:04.881Z"
 }
