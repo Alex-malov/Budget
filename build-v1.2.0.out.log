@@ -1,0 +1,27 @@
+  • electron-builder  version=26.15.3 os=10.0.26100
+  • loaded configuration  file=package.json ("build" field)
+  • author is missed in the package.json  appPackageFile=C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\package.json
+  • executing @electron/rebuild  electronVersion=37.10.3 arch=x64 buildFromSource=false workspaceRoot=C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=37.10.3 appOutDir=dist\v1.2.0\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\dist\v1.2.0\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget
+  ⨯ spawn EPERM     failedTask=build stackTrace=Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:420:11)
+    at Object.spawn (node:child_process:787:9)
+    at C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\node-module-collector\nodeModulesCollector.ts:376:34
+    at new Promise (<anonymous>)
+    at NpmNodeModulesCollector.streamCollectorCommandToFile (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\node-module-collector\nodeModulesCollector.ts:373:11)
+    at retries (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\node-module-collector\nodeModulesCollector.ts:98:20)
+    at retry (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\builder-util-runtime\src\retry.ts:9:18)
+    at retry (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\builder-util-runtime\src\retry.ts:13:20)
+    at NpmNodeModulesCollector.getNodeModules (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\node-module-collector\nodeModulesCollector.ts:54:31)
+    at collectNodeModulesWithLogging (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\util\appFileCopier.ts:225:14)
+    at computeNodeModuleFileSets (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\util\appFileCopier.ts:182:16)
+    at C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\platformPackager.ts:494:34
+    at async Promise.all (index 0)
+    at AsyncTaskManager.awaitTasks (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\builder-util\src\asyncTaskManager.ts:65:25)
+    at WinPackager.doPack (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\platformPackager.ts:309:5)
+    at WinPackager.pack (C:\Users\МАЮ\YandexDisk\Временная\Бюджеты\ПО\Budget\node_modules\app-builder-lib\src\platformPackager.ts:163:5)

@@ -1,0 +1,58 @@
+{
+  "name": "finance-resource-planning",
+  "version": "1.4.2",
+  "private": true,
+  "description": "MVP финансового и ресурсного планирования по проектам",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/server.test.js",
+    "desktop": "electron .",
+    "build:win": "electron-builder --win portable"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "isomorphic-git": "^1.41.2"
+  },
+  "devDependencies": {
+    "electron": "^37.2.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ru.budget.desktop",
+    "productName": "Budget",
+    "asar": true,
+    "files": [
+      "server.js",
+      "public/**",
+      "scripts/**",
+      "desktop/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "seed-data",
+        "filter": [
+          "**/*",
+          "!backups{,/**}",
+          "!import-reports{,/**}"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "artifactName": "Budget-${version}-win-x64.exe"
+  }
+}
